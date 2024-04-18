@@ -12,9 +12,9 @@ static struct exchange_buffer server_buff, client_buff;
 static struct per_client_resources *client_res = NULL;
 
 // connection struct
-struct per_connection_struct {
-    struct ibv_mr server_mr;
+struct memory_region {
     char* local_memory_region;
+    struct ibv_mr *server_mr;
     struct ibv_mr *local_memory_region_mr;
 };
 
@@ -25,24 +25,25 @@ struct per_client_resources {
     struct ibv_comp_channel *completion_channel;
     struct ibv_qp *qp;
     struct rdma_cm_id *client_id;
-
 };
 
-
-static void client_prepare_connection(struct sockaddr_in *s_addr) {
+/*
+ * Create client ID and resolve the destination IP address to RDMA Address
+ */
+static void resolve_addr(struct sockaddr_in *s_addr) {
     client_res = (struct per_client_resources*) malloc(sizeof(struct per_client_resources));
 
-    // Client side - create event channel
+    /* Init Event Channel */
     HANDLE(cm_event_channel = rdma_create_event_channel());
     debug("RDMA CM event channel created: %p \n", cm_event_channel)
 
-    // Create client ID
+    /* Create Client ID with the above Event Channel */
     HANDLE_NZ(rdma_create_id(cm_event_channel, &cm_client_id,
                              NULL,
                              RDMA_PS_TCP));
-
     client_res->client_id = cm_client_id;
-    // Resolve IP address to RDMA address and bind to client_id
+
+    /* Resolve IP address to RDMA address and bind to client_id */
     HANDLE_NZ(rdma_resolve_addr(client_res->client_id, NULL, (struct sockaddr *) s_addr, 2000));
     debug("waiting for cm event: RDMA_CM_EVENT_ADDR_RESOLVED\n")
 }
@@ -52,15 +53,15 @@ static int setup_client_resources(struct sockaddr_in *s_addr) {
          inet_ntoa(s_addr->sin_addr),
          ntohs(s_addr->sin_port));
 
-    // Create a protection domain
+    // Init Protection Domain
     HANDLE(client_res->pd = ibv_alloc_pd(client_res->client_id->verbs));
     debug("Protection Domain (PD) allocated: %p \n", client_res->pd )
 
-    // Create a completion channel
+    // Init Completion Channel
     HANDLE(client_res->completion_channel = ibv_create_comp_channel(cm_client_id->verbs));
     debug("Completion channel created: %p \n", client_res->completion_channel)
 
-    // Create a completion queue pair
+    // Init Completion Queue
     HANDLE(client_res->cq = ibv_create_cq(client_res->client_id->verbs /* which device*/,
                                           CQ_CAPACITY /* maximum capacity*/,
                                           NULL /* user context, not used here */,
@@ -450,23 +451,27 @@ void* write_to_redis(void *args) {
 
 static int wait_for_event(struct sockaddr_in *s_addr) {
 
-    struct rdma_cm_event *dummy_event = NULL;
-    struct per_connection_struct* connection = NULL;
+    struct rdma_cm_event *received_event = NULL;
+    struct memory_region* _region = NULL;
 
     pthread_t thread1, thread2;
-    while(rdma_get_cm_event(cm_event_channel, &dummy_event) == 0) {
+    while(rdma_get_cm_event(cm_event_channel, &received_event) == 0) {
         struct ibv_wc wc;
         struct rdma_cm_event cm_event;
-        memcpy(&cm_event, dummy_event, sizeof(*dummy_event));
+        memcpy(&cm_event, received_event, sizeof(*received_event));
         info("%s event received \n", rdma_event_str(cm_event.event));
+
         switch(cm_event.event) {
+            /* RDMA Address Resolution completed successfully */
             case RDMA_CM_EVENT_ADDR_RESOLVED:
-                HANDLE_NZ(rdma_ack_cm_event(dummy_event));
-                connection = (struct per_connection_struct*) malloc (sizeof(struct per_connection_struct*));
+                HANDLE_NZ(rdma_ack_cm_event(received_event));
+                _region = (struct memory_region*) malloc (sizeof(struct memory_region*));
+                /* Resolves the RDMA route to establish connection */
                 rdma_resolve_route(client_res->client_id, 2000);
                 break;
+            /* RDMA Route established successfully */
             case RDMA_CM_EVENT_ROUTE_RESOLVED:
-                HANDLE_NZ(rdma_ack_cm_event(dummy_event));
+                HANDLE_NZ(rdma_ack_cm_event(received_event));
                 setup_client_resources(s_addr);
                 build_memory_map(connection);
                 post_recv_server_memory_map();
@@ -521,7 +526,7 @@ int main(int argc, char **argv) {
     if (!server_sockaddr.sin_port) {
         server_sockaddr.sin_port = htons(DEFAULT_RDMA_PORT);
     }
-    client_prepare_connection(&server_sockaddr);
+    resolve_addr(&server_sockaddr);
     wait_for_event(&server_sockaddr);
     return ret;
 

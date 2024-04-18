@@ -21,28 +21,31 @@ struct per_client_resources {
 };
 
 // per memory struct
-struct per_memory_struct {
-    char* memory_region;
+struct memory_region_struct {
+    char *memory_region;
     struct ibv_mr *memory_region_mr;
     unsigned long *mapping_table_start;
 };
 
-static void setup_client_resources(struct rdma_cm_id *cm_client_id, struct per_memory_struct* conn)
-{
-    client_res = (struct per_client_resources*) malloc(sizeof(struct per_client_resources));
-    if(!cm_client_id){
+static void setup_client_resources(struct rdma_cm_id *cm_client_id, struct memory_region_struct *conn) {
+    /* Init the client resources */
+    client_res = (struct per_client_resources *) malloc(sizeof(struct per_client_resources));
+    if (!cm_client_id) {
         error("Client id is still NULL \n");
         return;
     }
     client_res->client_id = cm_client_id;
 
+    /* Init the Protection Domain for the client */
     HANDLE(client_res->pd = ibv_alloc_pd(cm_client_id->verbs));
     debug("Protection domain (PD) allocated: %p \n", client_res->pd)
 
+    /* Init the Completion Channel for the client */
     HANDLE(client_res->completion_channel = ibv_create_comp_channel(cm_client_id->verbs));
     debug("I/O completion event channel created: %p \n",
           client_res->completion_channel)
 
+    /* Init the Completion Queue for the client */
     HANDLE(client_res->cq = ibv_create_cq(cm_client_id->verbs,
                                           CQ_CAPACITY,
                                           NULL,
@@ -51,7 +54,7 @@ static void setup_client_resources(struct rdma_cm_id *cm_client_id, struct per_m
     debug("Completion queue (CQ) created: %p with %d elements \n",
           client_res->cq, client_res->cq->cqe)
 
-    /* Ask for the event for all activities in the completion queue*/
+    /* Ask for the event for all activities in the completion queue */
     HANDLE_NZ(ibv_req_notify_cq(client_res->cq,
                                 0));
     bzero(&qp_init_attr, sizeof qp_init_attr);
@@ -64,24 +67,12 @@ static void setup_client_resources(struct rdma_cm_id *cm_client_id, struct per_m
     qp_init_attr.send_cq = client_res->cq;
     HANDLE_NZ(rdma_create_qp(client_res->client_id,
                              client_res->pd,
-                             &qp_init_attr ));
+                             &qp_init_attr));
     client_res->qp = cm_client_id->qp;
-
     debug("Client QP created: %p \n", client_res->qp)
 }
 
-
-static void start_rdma_server(struct sockaddr_in *server_socket_addr) {
-    HANDLE(cm_event_channel = rdma_create_event_channel());
-    HANDLE_NZ(rdma_create_id(cm_event_channel, &cm_server_id, NULL, RDMA_PS_TCP));
-    HANDLE_NZ(rdma_bind_addr(cm_server_id, (struct sockaddr*) server_socket_addr));
-    HANDLE_NZ(rdma_listen(cm_server_id, 8));
-
-    info("Server is listening successfully at: %s , port: %d \n",
-         inet_ntoa(server_socket_addr->sin_addr),
-         ntohs(server_socket_addr->sin_port));
-}
-
+/* Establish connection with the client */
 static void accept_conn(struct rdma_cm_id *cm_client_id) {
     struct rdma_conn_param conn_param;
     memset(&conn_param, 0, sizeof(conn_param));
@@ -92,6 +83,10 @@ static void accept_conn(struct rdma_cm_id *cm_client_id) {
     debug("Wait for : RDMA_CM_EVENT_ESTABLISHED event \n")
 }
 
+/* Create a buffer for receiving client's message. Register ibv_reg_mr using client's pd,
+ * message addr, length of message, and permissions for the buffer.
+ * Post the client buffer as a Receive Request (RR) to the Work Queue (WQ)
+ * */
 static void post_recv_offset() {
     client_buff.message = malloc(sizeof(struct msg));
     HANDLE(client_buff.buffer = rdma_buffer_register(client_res->pd,
@@ -99,13 +94,13 @@ static void post_recv_offset() {
                                                      sizeof(struct msg),
                                                      (IBV_ACCESS_LOCAL_WRITE)));
 
-    client_recv_sge.addr = (uint64_t)client_buff.buffer->addr;
+    client_recv_sge.addr = (uint64_t) client_buff.buffer->addr;
     client_recv_sge.length = client_buff.buffer->length;
     client_recv_sge.lkey = client_buff.buffer->lkey;
 
     bzero(&client_recv_wr, sizeof(client_recv_wr));
     client_recv_wr.sg_list = &client_recv_sge;
-    client_recv_wr.num_sge = 1; // only one SGE
+    client_recv_wr.num_sge = 1;
 
     HANDLE_NZ(ibv_post_recv(client_res->qp,
                             &client_recv_wr,
@@ -114,59 +109,47 @@ static void post_recv_offset() {
     info("Receive buffer for client OFFSET pre-posting is successful \n");
 }
 
-static void build_memory_map(struct per_memory_struct *conn) {
-    conn->memory_region = malloc( DATA_SIZE  + (8 * (DATA_SIZE / BLOCK_SIZE)));
+/*
+ * Create Memory Buffer for the Server Client Communication. TODO: What sort of memory are we transferring?
+ */
+static void build_memory_map(struct memory_region_struct *conn) {
+    conn->memory_region = malloc(DATA_SIZE + (8 * (DATA_SIZE / BLOCK_SIZE)));
 
-    info(" Memory Map initialized: \n");
-    redisContext *context = redisConnect("127.0.0.1", 6379);
-    redisReply* reply;
-    for ( int i = 0 ; i < (DATA_SIZE / BLOCK_SIZE); i++) {
-        char offset_str[2];
-        sprintf(offset_str, "%d", i);
-        reply = redisCommand(context, "GET %s", offset_str);
-        if (reply == NULL || reply->type != REDIS_REPLY_STRING) {
-            strcpy(conn->memory_region + (i * BLOCK_SIZE) + (8 * (DATA_SIZE/ BLOCK_SIZE)), "(nil)");
-            freeReplyObject(reply);
-            continue;
-        }
-        strcpy(conn->memory_region + (i * BLOCK_SIZE) + (8 * (DATA_SIZE/ BLOCK_SIZE)), reply->str);
-        freeReplyObject(reply);
+    for ( int i = 0; i < (DATA_SIZE / BLOCK_SIZE); i++ ) {
+        strcpy(conn->memory_region + (i * BLOCK_SIZE) + (8 * (DATA_SIZE / BLOCK_SIZE)), (const char *) 'A' + i);
     }
-
+    info("Memory Map initialized: \n");
     print_memory_map(conn->memory_region);
 
     conn->memory_region_mr = rdma_buffer_register(client_res->pd,
                                                   conn->memory_region,
-                                                  DATA_SIZE  + (8 * (DATA_SIZE / BLOCK_SIZE)),
-                                                  (IBV_ACCESS_LOCAL_WRITE|
+                                                  DATA_SIZE + (8 * (DATA_SIZE / BLOCK_SIZE)),
+                                                  (IBV_ACCESS_LOCAL_WRITE |
                                                    IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE));
-    conn->mapping_table_start = (unsigned long * ) conn->memory_region;
+    conn->mapping_table_start = (unsigned long *) conn->memory_region;
     debug("Initiated memory map: %p\n", conn->mapping_table_start)
 }
 
-static void post_send_memory_map(struct per_memory_struct* conn) {
-    struct sockaddr_in remote_sockaddr;
+/*
+ * If the client sent the OFFSET, server must send the memory region address.
+ * Initialize the server buffer with the memory_region and add it the Send Request Queue (SR)
+ * as a Work Request (WR)
+ */
+static void post_send_memory_map(struct memory_region_struct *_region) {
     struct ibv_wc wc;
-
-    /* Extract client socket information */
-    memcpy(&remote_sockaddr /* where to save */,
-           rdma_get_peer_addr(client_res->client_id) /* gives you remote sockaddr */,
-           sizeof(struct sockaddr_in) /* max size */);
-    info("A new connection is accepted from %s \n",
-         inet_ntoa(remote_sockaddr.sin_addr));
 
     if (client_buff.message->type == OFFSET) {
 
         server_buff.message = malloc(sizeof(struct msg));
         server_buff.message->type = ADDRESS;
 
-        memcpy(&server_buff.message->data.mr, conn->memory_region_mr, sizeof(struct ibv_mr));
-        server_buff.message->data.mr.addr = (void *)(conn->memory_region);
+        memcpy(&server_buff.message->data.mr, _region->memory_region_mr, sizeof(struct ibv_mr));
+        server_buff.message->data.mr.addr = (void *) (_region->memory_region);
 
         server_buff.buffer = rdma_buffer_register(client_res->pd,
                                                   server_buff.message,
                                                   sizeof(struct msg),
-                                                  (IBV_ACCESS_LOCAL_WRITE|
+                                                  (IBV_ACCESS_LOCAL_WRITE |
                                                    IBV_ACCESS_REMOTE_READ |
                                                    IBV_ACCESS_REMOTE_WRITE));
 
@@ -183,14 +166,24 @@ static void post_send_memory_map(struct per_memory_struct* conn) {
         server_send_wr.opcode = IBV_WR_SEND;
         server_send_wr.send_flags = IBV_SEND_SIGNALED;
 
-        // memory map should have been initiated already. send that memory_map address
         HANDLE_NZ(ibv_post_send(client_res->qp, &server_send_wr, &bad_server_send_wr));
-        info( "Send request with memory map ADDRESS is successful \n");
+        info("Send request with memory map ADDRESS is successful \n");
     }
 }
 
-static int disconnect_and_cleanup(struct per_memory_struct* conn)
-{
+static int established_connection() {
+    struct sockaddr_in remote_sockaddr;
+
+    /* Extract client socket information */
+    memcpy(&remote_sockaddr /* where to save */,
+           rdma_get_peer_addr(client_res->client_id) /* gives you remote sockaddr */,
+           sizeof(struct sockaddr_in) /* max size */);
+
+    info("A new connection is accepted from %s \n",
+         inet_ntoa(remote_sockaddr.sin_addr));
+}
+
+static int disconnect_and_cleanup(struct memory_region_struct *conn) {
     int ret = -1;
     /* Destroy QP */
     rdma_destroy_qp(client_res->client_id);
@@ -223,124 +216,45 @@ static int disconnect_and_cleanup(struct per_memory_struct* conn)
     return 0;
 }
 
-static void poll_for_completion_events(int num_wc) {
-    struct ibv_wc wc;
-    int total_wc = process_work_completion_events(client_res->completion_channel, &wc, num_wc);
-
-    for (int i = 0 ; i < total_wc; i++) {
-        if( (&(wc) + i)->opcode & IBV_WC_RECV ) {
-            if ( client_buff.message->type == OFFSET ) {
-                show_exchange_buffer(client_buff.message);
-            }
-        }
-    }
-}
-
-// Read the latest update in the memory map and write to Redis
-void* write_to_redis(void *args) {
-    struct per_memory_struct* conn = args;
-    redisContext *context = redisConnect("127.0.0.1", 6379);
-    if (!context) {
-        fprintf(stderr, "Error:  Can't connect to Redis\n");
-        pthread_exit((void*)0);
-    }
-    char * previousValue = "(nil)";
-    char offset[2] = {'0', '\0'};
-    redisReply *reply;
-
-    while(1) {
-        char* str = conn->memory_region + ( 8 * (DATA_SIZE / BLOCK_SIZE)) + (atoi(offset) * BLOCK_SIZE);
-        if (strcmp(previousValue, str) != 0) {
-            info("Previous String (%s): %s\n", offset, previousValue);
-            info("Updating %s to new string %s\n", previousValue, str);
-            reply = redisCommand(context, "SET %s %s", offset, str);
-
-            if (!reply || context->err) {
-                fprintf(stderr, "Error:  Can't send command to Redis\n");
-                pthread_exit((void*)0);
-            }
-
-            info("REDIS_UPDATE: key: %s value: %s => %s \n", offset, str, reply->str);
-            previousValue = strdup(str);
-            print_memory_map(conn->memory_region);
-        }
-
-    }
-}
-
-// Read the latest update from Redis and update the memory map ( 0 )
-void* read_from_redis(void *args) {
-    struct per_memory_struct* conn = args;
-
-    redisContext *context = redisConnect("127.0.0.1", 6379);
-    if (!context) {
-        fprintf(stderr, "Error:  Can't connect to Redis\n");
-        pthread_exit((void*)0);
-    }
-
-    char offset[2] = {'1', '\0'};
-    redisReply* reply;
-    char* previousValue = "(nil)";
-    clock_t start_t, end_t;
-    double total_t;
-    while (1) {
-        reply = redisCommand(context, "GET %s", offset);
-        if (reply == NULL || ( reply->type != REDIS_REPLY_STRING && reply->str == NULL )) {
-            freeReplyObject(reply);
-            continue;
-        }
-
-        if (strcmp(previousValue, reply->str) != 0) {
-            info("Previous String(%s): %s\n", offset, previousValue);
-            info("Updating %s to new string %s\n", previousValue, reply->str);
-
-            start_t = clock();
-            strcpy(conn->memory_region + ( atoi(offset) * BLOCK_SIZE) + (8 * (DATA_SIZE/BLOCK_SIZE)), reply->str);
-
-            printf("Total time taken by CPU: %ld\n", start_t  );
-
-            previousValue = strdup(reply->str);
-            info("MAP_UPDATE: key: %s value: %s", offset, reply->str);
-            print_memory_map(conn->memory_region);
-        }
-
-        freeReplyObject(reply);
-    }
-}
-
-
-
 static int wait_for_event() {
     int ret;
 
-    struct rdma_cm_event *dummy_event = NULL;
-    struct per_memory_struct* connection = NULL;
+    struct rdma_cm_event *received_event = NULL;
+    struct memory_region_struct *_region = NULL;
     pthread_t thread1, thread2;
 
-    while(rdma_get_cm_event(cm_event_channel, &dummy_event) == 0){
+    while (rdma_get_cm_event(cm_event_channel, &received_event) == 0) {
+        /* Initialize the received event */
         struct rdma_cm_event cm_event;
-        memcpy(&cm_event, dummy_event, sizeof(*dummy_event));
+        memcpy(&cm_event, received_event, sizeof(*received_event));
         info("%s event received \n", rdma_event_str(cm_event.event));
-        switch(cm_event.event) {
+
+        /* SWITCH case to check what type of event was received */
+        switch (cm_event.event) {
+
+            /* Initially Server receives and Client Connect Request */
             case RDMA_CM_EVENT_CONNECT_REQUEST:
-                connection = (struct per_memory_struct*) malloc (sizeof(struct per_memory_struct*));
-                rdma_ack_cm_event(dummy_event); //Ack the event
-                setup_client_resources(cm_event.id, connection); // send a recv req for client_metadata
-                build_memory_map(connection);
+                _region = (struct memory_region_struct *) malloc(sizeof(struct memory_region_struct *));
+                rdma_ack_cm_event(received_event); //Ack the event
+                setup_client_resources(cm_event.id, _region); // send a recv req for client_metadata
+                build_memory_map(_region);
                 post_recv_offset();
                 accept_conn(cm_event.id);
                 break;
+
+            /*  After the client establishes the connection */
             case RDMA_CM_EVENT_ESTABLISHED:
-                rdma_ack_cm_event(dummy_event);
+                rdma_ack_cm_event(received_event);
                 poll_for_completion_events(1);
-                post_send_memory_map(connection);
+                established_connection();
+                post_send_memory_map(_region);
                 poll_for_completion_events(1);
-                pthread_create(&thread1, NULL, write_to_redis, (void *) connection);
-                pthread_create(&thread2, NULL, read_from_redis, (void *) connection);
                 break;
+
+            /* Disconnect and Cleanup */
             case RDMA_CM_EVENT_DISCONNECTED:
-                rdma_ack_cm_event(dummy_event);
-                disconnect_and_cleanup(connection);
+                rdma_ack_cm_event(received_event);
+                disconnect_and_cleanup(_region);
                 break;
             default:
                 error("Event not found %s", (char *) cm_event.event);
@@ -350,19 +264,41 @@ static int wait_for_event() {
     return ret;
 }
 
+static void start_rdma_server(struct sockaddr_in *server_socket_addr) {
+    // Create RDMA Event Channel
+    HANDLE(cm_event_channel = rdma_create_event_channel());
+
+    // Using the RDMA EC, create ID to track communication information
+    HANDLE_NZ(rdma_create_id(cm_event_channel, &cm_server_id, NULL, RDMA_PS_TCP));
+
+    // Using the ID, bind the socket information
+    HANDLE_NZ(rdma_bind_addr(cm_server_id, (struct sockaddr *) server_socket_addr));
+
+    // Server Listening...
+    HANDLE_NZ(rdma_listen(cm_server_id, 8));
+    info("Server is listening successfully at: %s , port: %d \n",
+         inet_ntoa(server_socket_addr->sin_addr),
+         ntohs(server_socket_addr->sin_port));
+}
 
 int main(int argc, char **argv) {
-    // struct for Internet Socket Address
+    /* struct for Internet Socket Address */
     struct sockaddr_in server_socket_addr;
-    // set the struct variable to 0
+
+    /* set the struct variable to 0 */
     bzero(&server_socket_addr, sizeof(server_socket_addr));
-    server_socket_addr.sin_family = AF_INET; // IP protocol family
-    server_socket_addr.sin_addr.s_addr = htonl(INADDR_ANY); // ANY address
+
+    /* IP protocol family */
+    server_socket_addr.sin_family = AF_INET;
+
+    /* ANY address */
+    server_socket_addr.sin_addr.s_addr = htonl(INADDR_ANY);
+
     int ret, option;
-    while((option = getopt(argc, argv, "a:p:")) != -1) {
+    while ((option = getopt(argc, argv, "a:p:")) != -1) {
         switch (option) {
             case 'a':
-                ret = get_addr(optarg, (struct sockaddr*) &server_socket_addr);
+                ret = get_addr(optarg, (struct sockaddr *) &server_socket_addr);
                 if (ret) {
                     error("Invalid IP");
                     return ret;
@@ -379,7 +315,10 @@ int main(int argc, char **argv) {
     if (!server_socket_addr.sin_port) {
         server_socket_addr.sin_port = htons(DEFAULT_RDMA_PORT);
     }
+
+    /* Start the rdma server with the socket information */
     start_rdma_server(&server_socket_addr);
+
     wait_for_event();
     return 0;
 }

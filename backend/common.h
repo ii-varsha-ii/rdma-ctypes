@@ -77,6 +77,7 @@ int get_addr(char *dst, struct sockaddr *addr);
 void show_exchange_buffer(struct msg *attr);
 void rdma_buffer_free(struct ibv_mr *mr);
 void print_memory_map(const char* memory_region);
+void poll_for_completion_events(int num_wc);
 
 struct ibv_mr *rdma_buffer_register(struct ibv_pd *pd,
                                     void *addr,

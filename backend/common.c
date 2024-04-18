@@ -11,6 +11,19 @@ void print_memory_map(const char* memory_region) {
     info("-------------------\n")
 }
 
+void poll_for_completion_events(int num_wc) {
+    struct ibv_wc wc;
+    int total_wc = process_work_completion_events(client_res->completion_channel, &wc, num_wc);
+
+    for (int i = 0 ; i < total_wc; i++) {
+        if( (&(wc) + i)->opcode & IBV_WC_RECV ) {
+            if ( client_buff.message->type == OFFSET ) {
+                show_exchange_buffer(client_buff.message);
+            }
+        }
+    }
+}
+
 void show_exchange_buffer(struct msg *attr) {
     info("---------------------------------------------------------\n");
     info("message %p\n", attr);
@@ -91,12 +104,13 @@ void rdma_buffer_deregister(struct ibv_mr *mr)
     ibv_dereg_mr(mr);
 }
 
-int process_work_completion_events (struct ibv_comp_channel *comp_channel,
+int process_work_completion_events(struct ibv_comp_channel *comp_channel,
                                     struct ibv_wc *wc, int max_wc)
 {
     struct ibv_cq *cq_ptr = NULL;
     void *context = NULL;
     int ret = -1, i, total_wc = 0;
+
     /* We wait for the notification on the CQ channel */
     ret = ibv_get_cq_event(comp_channel, /* IO channel where we are expecting the notification */
                            &cq_ptr, /* which CQ has an activity. This should be the same as CQ we created before */
@@ -105,7 +119,7 @@ int process_work_completion_events (struct ibv_comp_channel *comp_channel,
         error("Failed to get next CQ event due to %d \n", -errno);
         return -errno;
     }
-    printf("%p\n", cq_ptr);
+
     /* Request for more notifications. */
     ret = ibv_req_notify_cq(cq_ptr, 0);
     if (ret){
@@ -113,10 +127,10 @@ int process_work_completion_events (struct ibv_comp_channel *comp_channel,
         return -errno;
     }
     /* We got notification. We reap the work completion (WC) element. It is
- * unlikely but a good practice it write the CQ polling code that
+    * unlikely but a good practice it write the CQ polling code that
     * can handle zero WCs. ibv_poll_cq can return zero. Same logic as
     * MUTEX conditional variables in pthread programming.
- */
+    */
     // poll through the cq and get all the notifications
     total_wc = 0;
     do {
