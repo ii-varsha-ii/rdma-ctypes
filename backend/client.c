@@ -13,8 +13,8 @@ static struct per_client_resources *client_res = NULL;
 
 // connection struct
 struct memory_region {
-    char* local_memory_region;
-    struct ibv_mr *server_mr;
+    char *local_memory_region;
+    struct ibv_mr server_mr;
     struct ibv_mr *local_memory_region_mr;
 };
 
@@ -31,7 +31,7 @@ struct per_client_resources {
  * Create client ID and resolve the destination IP address to RDMA Address
  */
 static void resolve_addr(struct sockaddr_in *s_addr) {
-    client_res = (struct per_client_resources*) malloc(sizeof(struct per_client_resources));
+    client_res = (struct per_client_resources *) malloc(sizeof(struct per_client_resources));
 
     /* Init Event Channel */
     HANDLE(cm_event_channel = rdma_create_event_channel());
@@ -44,7 +44,7 @@ static void resolve_addr(struct sockaddr_in *s_addr) {
     client_res->client_id = cm_client_id;
 
     /* Resolve IP address to RDMA address and bind to client_id */
-    HANDLE_NZ(rdma_resolve_addr(client_res->client_id, NULL, (struct sockaddr *) s_addr, 2000));
+    HANDLE_NZ(rdma_resolve_addr(client_res->client_id, NULL, (struct sockaddr *) s_addr, TIMEOUTMS));
     debug("waiting for cm event: RDMA_CM_EVENT_ADDR_RESOLVED\n")
 }
 
@@ -55,7 +55,7 @@ static int setup_client_resources(struct sockaddr_in *s_addr) {
 
     // Init Protection Domain
     HANDLE(client_res->pd = ibv_alloc_pd(client_res->client_id->verbs));
-    debug("Protection Domain (PD) allocated: %p \n", client_res->pd )
+    debug("Protection Domain (PD) allocated: %p \n", client_res->pd)
 
     // Init Completion Channel
     HANDLE(client_res->completion_channel = ibv_create_comp_channel(cm_client_id->verbs));
@@ -92,8 +92,12 @@ static int setup_client_resources(struct sockaddr_in *s_addr) {
     return 0;
 }
 
-static int post_recv_server_memory_map()
-{
+/*
+ * Create a server memory buffer for a message to receive the memory map.
+ * Post it as the Receive Request (RR) to the Queue.
+ */
+static int post_recv_server_memory_map() {
+    debug("Register Server Buffer\n");
     server_buff.message = malloc(sizeof(struct msg));
     HANDLE(server_buff.buffer = rdma_buffer_register(client_res->pd,
                                                      server_buff.message,
@@ -111,12 +115,12 @@ static int post_recv_server_memory_map()
     HANDLE_NZ(ibv_post_recv(client_res->qp /* which QP */,
                             &server_recv_wr /* receive work request*/,
                             &bad_server_recv_wr /* error WRs */));
-    info("Receive buffer pre-posting is successful \n");
+    debug("Pre-posting Server Receive Buffer for Address successfull \n");
     return 0;
 }
 
-static void connect_to_server()
-{
+/* Send Connect Request to the server */
+static void connect_to_server() {
     struct rdma_conn_param conn_param;
     bzero(&conn_param, sizeof(conn_param));
     conn_param.initiator_depth = 3;
@@ -125,20 +129,23 @@ static void connect_to_server()
     HANDLE_NZ(rdma_connect(client_res->client_id, &conn_param));
 }
 
-static int post_send_to_server()
-{
+/*
+ * Create a client buffer for OFFSET and register a memory buffer
+ */
+static int post_hello_to_server(int offset) {
+    debug("Register Client Buffer")
     client_buff.message = malloc(sizeof(struct msg));
-    client_buff.message->type = OFFSET;
-    client_buff.message->data.offset = 0;
+    client_buff.message->type = HELLO;
+    client_buff.message->data.offset = offset;
 
     HANDLE(client_buff.buffer = rdma_buffer_register(client_res->pd,
                                                      client_buff.message,
                                                      sizeof(struct msg),
-                                                     (IBV_ACCESS_LOCAL_WRITE|
-                                                      IBV_ACCESS_REMOTE_READ|
+                                                     (IBV_ACCESS_LOCAL_WRITE |
+                                                      IBV_ACCESS_REMOTE_READ |
                                                       IBV_ACCESS_REMOTE_WRITE)));
 
-    info("Sending OFFSET... \n");
+    debug(":: Exchange Buffer:: \n");
     show_exchange_buffer(client_buff.message);
 
     client_send_sge.addr = (uint64_t) client_buff.buffer->addr;
@@ -155,12 +162,33 @@ static int post_send_to_server()
                             &client_send_wr,
                             &bad_client_send_wr));
 
-    info("Send request with OFFSET is successful \n");
+    info("Pre-posting Send Request with OFFSET is successful \n");
     return 0;
 }
 
-static int disconnect_and_cleanup()
-{
+static int post_recv_hello_from_server() {
+    server_buff.message = malloc(sizeof(struct msg));
+    HANDLE(server_buff.buffer = rdma_buffer_register(client_res->pd,
+                                                     server_buff.message,
+                                                     sizeof(struct msg),
+                                                     (IBV_ACCESS_LOCAL_WRITE)));
+
+    server_recv_sge.addr = (uint64_t) server_buff.message;
+    server_recv_sge.length = (uint32_t) sizeof(struct msg);
+    server_recv_sge.lkey = server_buff.buffer->lkey;
+
+    bzero(&server_recv_wr, sizeof(server_recv_wr));
+    server_recv_wr.sg_list = &server_recv_sge;
+    server_recv_wr.num_sge = 1;
+
+    HANDLE_NZ(ibv_post_recv(client_res->qp /* which QP */,
+                            &server_recv_wr /* receive work request*/,
+                            &bad_server_recv_wr /* error WRs */));
+    debug("Pre-posting Server Receive Buffer for Address successfull \n");
+    return 0;
+}
+
+static int disconnect_and_cleanup() {
     int ret = -1;
     ret = rdma_disconnect(client_res->client_id);
     if (ret) {
@@ -200,48 +228,39 @@ static int disconnect_and_cleanup()
     return 0;
 }
 
-static void poll_for_completion_events(int num_wc) {
-    struct ibv_wc wc;
-    int total_wc = process_work_completion_events(client_res->completion_channel, &wc, num_wc);
-
-    for (int i = 0 ; i < total_wc; i++) {
-        if( (&(wc) + i)->opcode & IBV_WC_RECV ) {
-            if ( server_buff.message->type == ADDRESS ) {
-                show_exchange_buffer(server_buff.message);
-            }
-        }
-    }
-    debug("done\n");
-}
-
-static void build_memory_map(struct per_connection_struct *conn) {
-    conn->local_memory_region = malloc( DATA_SIZE  + (8 * (DATA_SIZE / BLOCK_SIZE)));
-    memset(conn->local_memory_region, 2, DATA_SIZE  + (8 * (DATA_SIZE / BLOCK_SIZE)));
+/*
+ * Create a local memory region and set it as 0.
+ * Register a memory buffer for the local memory region with the pd, memory address, length and permissions
+ * */
+static void build_memory_map(struct memory_region *conn) {
+    debug("Registering Local Memory Region \n");
+    conn->local_memory_region = malloc(DATA_SIZE + (8 * (DATA_SIZE / BLOCK_SIZE)));
+    memset(conn->local_memory_region, 0, DATA_SIZE + (8 * (DATA_SIZE / BLOCK_SIZE)));
 
     conn->local_memory_region_mr = rdma_buffer_register(client_res->pd,
                                                         conn->local_memory_region,
-                                                        DATA_SIZE  + (8 * (DATA_SIZE / BLOCK_SIZE)),
-                                                        (IBV_ACCESS_LOCAL_WRITE|
-                                                         IBV_ACCESS_REMOTE_READ|
+                                                        DATA_SIZE + (8 * (DATA_SIZE / BLOCK_SIZE)),
+                                                        (IBV_ACCESS_LOCAL_WRITE |
+                                                         IBV_ACCESS_REMOTE_READ |
                                                          IBV_ACCESS_REMOTE_WRITE));
 
-    debug("Initiated local memory map: %p\n", conn->local_memory_region)
+    debug("Local Memory Region registration successful: %p\n", conn->local_memory_region)
 }
 
-static void read_memory_map(struct per_connection_struct* conn) {
-    memcpy(&conn->server_mr, &server_buff.message->data.mr, sizeof(conn->server_mr));
+static void read_memory_map(struct memory_region *region) {
+    memcpy(&region->server_mr, &server_buff.message->data.mr, sizeof(region->server_mr));
 
-    client_send_sge.addr = (uintptr_t)(conn->local_memory_region);
-    client_send_sge.length = (uint32_t) DATA_SIZE  + (8 * (DATA_SIZE / BLOCK_SIZE));
-    client_send_sge.lkey = conn->local_memory_region_mr->lkey;
+    client_send_sge.addr = (uintptr_t) (region->local_memory_region);
+    client_send_sge.length = (uint32_t) DATA_SIZE + (8 * (DATA_SIZE / BLOCK_SIZE));
+    client_send_sge.lkey = region->local_memory_region_mr->lkey;
 
     bzero(&client_send_wr, sizeof(client_send_wr));
     client_send_wr.sg_list = &client_send_sge;
     client_send_wr.num_sge = 1;
     client_send_wr.opcode = IBV_WR_RDMA_READ;
     client_send_wr.send_flags = IBV_SEND_SIGNALED;
-    client_send_wr.wr.rdma.remote_addr = (uintptr_t) conn->server_mr.addr;
-    client_send_wr.wr.rdma.rkey = conn->server_mr.rkey;
+    client_send_wr.wr.rdma.remote_addr = (uintptr_t) region->server_mr.addr;
+    client_send_wr.wr.rdma.rkey = region->server_mr.rkey;
     HANDLE_NZ(ibv_post_send(client_res->qp,
                             &client_send_wr,
                             &bad_client_send_wr));
@@ -249,94 +268,11 @@ static void read_memory_map(struct per_connection_struct* conn) {
     debug("RDMA read the remote memory map. \n");
 }
 
-const char* generateString() {
-    char* _str = malloc(BLOCK_SIZE);
-    char a = 'a';
-    for( int i = 0; i < BLOCK_SIZE - 1; i++) {
-
-        strncat(_str, &a, 1);
-        if(a == 'z')
-            a = 'a';
-        else
-            a = a + 1;
-    }
-    return _str;
-}
-static void write_to_memory_map(struct per_connection_struct* conn) {
-    const char* str_to_copy = generateString();
-    for ( int i = 0 ; i < (DATA_SIZE / BLOCK_SIZE); i++) {
-        memcpy(conn->local_memory_region + (i * BLOCK_SIZE) + (8 * (DATA_SIZE / BLOCK_SIZE)), str_to_copy, BLOCK_SIZE );
-    }
-    client_send_sge.addr = (uintptr_t)(conn->local_memory_region);
-    client_send_sge.length = (uint32_t) DATA_SIZE  + (8 * (DATA_SIZE / BLOCK_SIZE));
-    client_send_sge.lkey = conn->local_memory_region_mr->lkey;
-    /* now we link to the send work request */
-    bzero(&client_send_wr, sizeof(client_send_wr));
-    client_send_wr.sg_list = &client_send_sge;
-    client_send_wr.num_sge = 1;
-    client_send_wr.opcode = IBV_WR_RDMA_WRITE;
-    client_send_wr.send_flags = IBV_SEND_SIGNALED;
-    /* we have to tell server side info for RDMA */
-    client_send_wr.wr.rdma.rkey = conn->server_mr.rkey;
-    client_send_wr.wr.rdma.remote_addr = (uintptr_t) conn->server_mr.addr;
-    /* Now we post it */
-    HANDLE_NZ(ibv_post_send(client_res->qp,
-                            &client_send_wr,
-                            &bad_client_send_wr));
-    debug("RDMA write the remote memory map. \n");
-}
-
-
-static void write_to_memory_map_in_offset(struct per_connection_struct* conn, int offset, const char* string_to_write) {
-    strcpy(conn->local_memory_region + (offset*BLOCK_SIZE) + (8 * (DATA_SIZE / BLOCK_SIZE)), string_to_write);
-
-    client_send_sge.addr = (uintptr_t)(conn->local_memory_region + (8 * (DATA_SIZE / BLOCK_SIZE)) + (offset * BLOCK_SIZE));
-    client_send_sge.length = (uint32_t) BLOCK_SIZE;
-    client_send_sge.lkey = conn->local_memory_region_mr->lkey;
-
-    bzero(&client_send_wr, sizeof(client_send_wr));
-    client_send_wr.sg_list = &client_send_sge;
-    client_send_wr.num_sge = 1;
-    client_send_wr.opcode = IBV_WR_RDMA_WRITE;
-    client_send_wr.send_flags = IBV_SEND_SIGNALED;
-
-    client_send_wr.wr.rdma.rkey = conn->server_mr.rkey;
-    client_send_wr.wr.rdma.remote_addr = (uintptr_t) conn->server_mr.addr + (8 * (DATA_SIZE / BLOCK_SIZE)) + (offset * BLOCK_SIZE);
-
-    HANDLE_NZ(ibv_post_send(client_res->qp,
-                            &client_send_wr,
-                            &bad_client_send_wr));
-
-    debug("RDMA write the remote memory map. \n");
-}
-
-static void read_from_memory_map_in_offset(struct per_connection_struct* conn, int offset) {
-    memcpy(&conn->server_mr, &server_buff.message->data.mr, sizeof(conn->server_mr));
-
-    client_send_sge.addr = (uintptr_t)(conn->local_memory_region + (8 * (DATA_SIZE / BLOCK_SIZE)) + (offset * BLOCK_SIZE));
-    client_send_sge.length = (uint32_t) BLOCK_SIZE;
-    client_send_sge.lkey = conn->local_memory_region_mr->lkey;
-
-    bzero(&client_send_wr, sizeof(client_send_wr));
-    client_send_wr.sg_list = &client_send_sge;
-    client_send_wr.num_sge = 1;
-    client_send_wr.opcode = IBV_WR_RDMA_READ;
-    client_send_wr.send_flags = IBV_SEND_SIGNALED;
-    client_send_wr.wr.rdma.remote_addr = (uintptr_t) conn->server_mr.addr + (8 * (DATA_SIZE / BLOCK_SIZE)) + (offset * BLOCK_SIZE);
-    client_send_wr.wr.rdma.rkey = conn->server_mr.rkey;
-
-    HANDLE_NZ(ibv_post_send(client_res->qp,
-                            &client_send_wr,
-                            &bad_client_send_wr));
-
-    debug("RDMA read the remote memory map \n");
-}
-
-int process_without_fetching_wq(struct ibv_wc *wc, int max_wc) {
+int process_work_completion_events_without_wait(struct ibv_wc *wc, int max_wc) {
     int total_wc, i;
     int ret = -1;
     ret = ibv_req_notify_cq(client_res->cq, 0);
-    if (ret){
+    if (ret) {
         error("Failed to request further notifications %d \n", -errno);
         return -errno;
     }
@@ -352,7 +288,7 @@ int process_without_fetching_wq(struct ibv_wc *wc, int max_wc) {
         total_wc += ret;
     } while (total_wc < max_wc);
     debug("%d WC are completed \n", total_wc)
-    for( i = 0 ; i < total_wc ; i++) {
+    for (i = 0; i < total_wc; i++) {
         if (wc[i].status != IBV_WC_SUCCESS) {
             error("Work completion (WC) has error status: %s at index %d \n",
                   ibv_wc_status_str(wc[i].status), i);
@@ -364,130 +300,110 @@ int process_without_fetching_wq(struct ibv_wc *wc, int max_wc) {
     return total_wc;
 }
 
+static void c_poll_for_completion_events(struct ibv_wc *wc, int num_wc) {
+    int total_wc = process_work_completion_events_without_wait(wc, num_wc);
 
-void* read_from_redis(void* args) {
-    struct per_connection_struct* conn = args;
-
-    redisContext *context = redisConnect("127.0.0.1", 6379);
-    if (!context) {
-        fprintf(stderr, "Error:  Can't connect to Redis\n");
-        pthread_exit((void*)0);
-    }
-
-    char offset[2] = {'0', '\0'};
-    redisReply* reply;
-    char* previousValue = "(nil)";
-
-    while (1) {
-        reply = redisCommand(context, "GET %s", offset);
-
-        if (reply == NULL || reply->type != REDIS_REPLY_STRING) {
-            freeReplyObject(reply);
-            continue;
-        }
-        struct ibv_wc wc;
-        if (strcmp(previousValue, reply->str) != 0) {
-            info("Previous String (%s): %s\n", offset, previousValue);
-            info("Updating %s to new string %s\n", previousValue, reply->str);
-
-            //struct timeval current_time;
-            //gettimeofday(&current_time, NULL);
-            //printf("seconds : %ld\nmicro seconds : %ld\n",
-            //      current_time.tv_sec, current_time.tv_usec);
-
-            write_to_memory_map_in_offset(conn, atoi(offset), reply->str);
-            process_without_fetching_wq(&wc, 1);
-
-            previousValue = strdup(reply->str);
-            info("MAP_UPDATE: key: %s value: %s\n", offset, reply->str);
-            print_memory_map(conn->local_memory_region);
-        }
-
-        freeReplyObject(reply);
-    }
-}
-
-void* write_to_redis(void *args) {
-    struct per_connection_struct *conn = args;
-
-    redisContext *context = redisConnect("127.0.0.1", 6379);
-    if (!context) {
-        fprintf(stderr, "Error:  Can't connect to Redis\n");
-        pthread_exit((void *) 0);
-    }
-
-    char *previousValue = "(nil)";
-    char offset[2] = {'1', '\0'};
-    redisReply *reply;
-    struct ibv_wc wc;
-    clock_t start_t, end_t;
-    double total_t;
-    while (1) {
-        start_t = clock();
-        read_from_memory_map_in_offset(conn, atoi(offset));
-        char *str = conn->local_memory_region + (8 * (DATA_SIZE / BLOCK_SIZE)) + (atoi(offset) * BLOCK_SIZE);
-        process_without_fetching_wq(&wc, 1);
-        if (strcmp(previousValue, str) != 0) {
-
-            info("Previous String (%s): %s\n", offset, previousValue);
-            info("Updating %s to new string %s\n", previousValue, str);
-
-            reply = redisCommand(context, "SET %s %s", offset, str);
-
-            end_t = clock();
-            total_t = (double)(end_t - start_t) / CLOCKS_PER_SEC;
-            printf("Total time taken by CPU: %f\n", total_t  );
-
-            if (!reply || context->err) {
-                fprintf(stderr, "Error:  Can't send command to Redis\n");
-                pthread_exit((void *) 0);
+    for (int i = 0; i < total_wc; i++) {
+        if (wc[i].opcode & IBV_WC_RECV) {
+            if (server_buff.message->type == HELLO) {
+                show_exchange_buffer(server_buff.message);
             }
-            info("REDIS_UPDATE: key: %s value: %s => %s \n", offset, str, reply->str);
-            previousValue = strdup(str);
-            print_memory_map(conn->local_memory_region);
         }
     }
+    debug("done\n");
 }
 
+static void read_from_memory_map_in_offset(struct memory_region *conn, int offset) {
+    memcpy(&conn->server_mr, &server_buff.message->data.mr, sizeof(conn->server_mr));
+
+    client_send_sge.addr = (uintptr_t) (conn->local_memory_region + (8 * (DATA_SIZE / BLOCK_SIZE)) +
+                                        (offset * BLOCK_SIZE));
+    client_send_sge.length = (uint32_t) BLOCK_SIZE;
+    client_send_sge.lkey = conn->local_memory_region_mr->lkey;
+
+    bzero(&client_send_wr, sizeof(client_send_wr));
+    client_send_wr.sg_list = &client_send_sge;
+    client_send_wr.num_sge = 1;
+    client_send_wr.opcode = IBV_WR_RDMA_READ;
+    client_send_wr.send_flags = IBV_SEND_SIGNALED;
+    client_send_wr.wr.rdma.remote_addr =
+            (uintptr_t) conn->server_mr.addr + (8 * (DATA_SIZE / BLOCK_SIZE)) + (offset * BLOCK_SIZE);
+    client_send_wr.wr.rdma.rkey = conn->server_mr.rkey;
+
+    HANDLE_NZ(ibv_post_send(client_res->qp,
+                            &client_send_wr,
+                            &bad_client_send_wr));
+
+    debug("RDMA read the remote memory map \n");
+}
+
+static void write_to_memory_map_in_offset(struct memory_region *conn, int offset, const char *string_to_write) {
+    strcpy(conn->local_memory_region + (offset * BLOCK_SIZE) + (8 * (DATA_SIZE / BLOCK_SIZE)), string_to_write);
+
+    client_send_sge.addr = (uintptr_t) (conn->local_memory_region + (8 * (DATA_SIZE / BLOCK_SIZE)) +
+                                        (offset * BLOCK_SIZE));
+    client_send_sge.length = (uint32_t) BLOCK_SIZE;
+    client_send_sge.lkey = conn->local_memory_region_mr->lkey;
+
+    bzero(&client_send_wr, sizeof(client_send_wr));
+    client_send_wr.sg_list = &client_send_sge;
+    client_send_wr.num_sge = 1;
+    client_send_wr.opcode = IBV_WR_RDMA_WRITE;
+    client_send_wr.send_flags = IBV_SEND_SIGNALED;
+
+    client_send_wr.wr.rdma.rkey = conn->server_mr.rkey;
+    client_send_wr.wr.rdma.remote_addr =
+            (uintptr_t) conn->server_mr.addr + (8 * (DATA_SIZE / BLOCK_SIZE)) + (offset * BLOCK_SIZE);
+
+    HANDLE_NZ(ibv_post_send(client_res->qp,
+                            &client_send_wr,
+                            &bad_client_send_wr));
+
+    debug("RDMA write the remote memory map. \n");
+}
+
+/*
+ * Blocking while loop which checks for incoming events and calls the necessary
+ * functions based on the received events
+ */
 static int wait_for_event(struct sockaddr_in *s_addr) {
 
     struct rdma_cm_event *received_event = NULL;
-    struct memory_region* _region = NULL;
+    struct memory_region *_region = NULL;
 
-    pthread_t thread1, thread2;
-    while(rdma_get_cm_event(cm_event_channel, &received_event) == 0) {
+    resolve_addr(s_addr);
+    while (rdma_get_cm_event(cm_event_channel, &received_event) == 0) {
         struct ibv_wc wc;
         struct rdma_cm_event cm_event;
         memcpy(&cm_event, received_event, sizeof(*received_event));
         info("%s event received \n", rdma_event_str(cm_event.event));
 
-        switch(cm_event.event) {
+        switch (cm_event.event) {
             /* RDMA Address Resolution completed successfully */
             case RDMA_CM_EVENT_ADDR_RESOLVED:
                 HANDLE_NZ(rdma_ack_cm_event(received_event));
-                _region = (struct memory_region*) malloc (sizeof(struct memory_region*));
                 /* Resolves the RDMA route to establish connection */
-                rdma_resolve_route(client_res->client_id, 2000);
+                rdma_resolve_route(client_res->client_id, TIMEOUTMS);
                 break;
-            /* RDMA Route established successfully */
+
+                /* RDMA Route established successfully */
             case RDMA_CM_EVENT_ROUTE_RESOLVED:
                 HANDLE_NZ(rdma_ack_cm_event(received_event));
                 setup_client_resources(s_addr);
-                build_memory_map(connection);
-                post_recv_server_memory_map();
+                post_recv_hello_from_server();
                 connect_to_server();
                 break;
+
             case RDMA_CM_EVENT_ESTABLISHED:
-                HANDLE_NZ(rdma_ack_cm_event(dummy_event));
-                post_send_to_server();
-                poll_for_completion_events(2); // post_recv_server_memory_map, post_send_to_server
-                read_memory_map(connection);
-                process_without_fetching_wq(&wc, 1);
-                pthread_create(&thread1, NULL, read_from_redis, (void*) connection);
-                pthread_create(&thread2, NULL, write_to_redis, (void *) connection);
+                HANDLE_NZ(rdma_ack_cm_event(received_event));
+                post_hello_to_server(123);
+                /* poll for completion of the previous Receive Address and Send Offset */
+                c_poll_for_completion_events(&wc, 2);
+                post_hello_to_server(125);
+                c_poll_for_completion_events(&wc, 1);
                 break;
             case RDMA_CM_EVENT_DISCONNECTED:
-                HANDLE_NZ(rdma_ack_cm_event(dummy_event));
+                HANDLE_NZ(rdma_ack_cm_event(received_event));
                 disconnect_and_cleanup();
                 break;
             default:
@@ -496,7 +412,6 @@ static int wait_for_event(struct sockaddr_in *s_addr) {
         }
     }
 }
-
 
 
 int main(int argc, char **argv) {
@@ -511,7 +426,7 @@ int main(int argc, char **argv) {
         switch (option) {
             case 'a':
                 /* remember, this overwrites the port info */
-                ret = get_addr(optarg, (struct sockaddr*) &server_sockaddr);
+                ret = get_addr(optarg, (struct sockaddr *) &server_sockaddr);
                 if (ret) {
                     error("Invalid IP \n");
                     return ret;
@@ -526,7 +441,7 @@ int main(int argc, char **argv) {
     if (!server_sockaddr.sin_port) {
         server_sockaddr.sin_port = htons(DEFAULT_RDMA_PORT);
     }
-    resolve_addr(&server_sockaddr);
+
     wait_for_event(&server_sockaddr);
     return ret;
 

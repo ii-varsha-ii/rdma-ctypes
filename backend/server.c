@@ -27,7 +27,7 @@ struct memory_region_struct {
     unsigned long *mapping_table_start;
 };
 
-static void setup_client_resources(struct rdma_cm_id *cm_client_id, struct memory_region_struct *conn) {
+static void setup_client_resources(struct rdma_cm_id *cm_client_id) {
     /* Init the client resources */
     client_res = (struct per_client_resources *) malloc(sizeof(struct per_client_resources));
     if (!cm_client_id) {
@@ -72,6 +72,19 @@ static void setup_client_resources(struct rdma_cm_id *cm_client_id, struct memor
     debug("Client QP created: %p \n", client_res->qp)
 }
 
+static void poll_for_completion_events(int num_wc) {
+    struct ibv_wc wc;
+    int total_wc = process_work_completion_events(client_res->completion_channel, &wc, num_wc);
+
+    for (int i = 0 ; i < total_wc; i++) {
+        if( (&(wc) + i)->opcode & IBV_WC_RECV ) {
+            if ( client_buff.message->type == HELLO ) {
+                show_exchange_buffer(client_buff.message);
+            }
+        }
+    }
+}
+
 /* Establish connection with the client */
 static void accept_conn(struct rdma_cm_id *cm_client_id) {
     struct rdma_conn_param conn_param;
@@ -87,7 +100,7 @@ static void accept_conn(struct rdma_cm_id *cm_client_id) {
  * message addr, length of message, and permissions for the buffer.
  * Post the client buffer as a Receive Request (RR) to the Work Queue (WQ)
  * */
-static void post_recv_offset() {
+static void post_recv_hello() {
     client_buff.message = malloc(sizeof(struct msg));
     HANDLE(client_buff.buffer = rdma_buffer_register(client_res->pd,
                                                      client_buff.message,
@@ -109,25 +122,51 @@ static void post_recv_offset() {
     info("Receive buffer for client OFFSET pre-posting is successful \n");
 }
 
+static void post_send_hello() {
+    server_buff.message = malloc(sizeof(struct msg));
+    server_buff.message->type = HELLO;
+    server_buff.message->data.offset = client_buff.message->data.offset + 1;
+
+    server_buff.buffer = rdma_buffer_register(client_res->pd,
+                                              server_buff.message,
+                                              sizeof(struct msg),
+                                              (IBV_ACCESS_LOCAL_WRITE |
+                                               IBV_ACCESS_REMOTE_READ |
+                                               IBV_ACCESS_REMOTE_WRITE));
+
+    show_exchange_buffer(server_buff.message);
+
+    server_send_sge.addr = (uint64_t) server_buff.message;
+    server_send_sge.length = (uint32_t) sizeof(struct msg);
+    server_send_sge.lkey = server_buff.buffer->lkey;
+
+    bzero(&server_send_wr, sizeof(server_send_wr));
+    server_send_wr.sg_list = &server_send_sge;
+    server_send_wr.num_sge = 1;
+    server_send_wr.opcode = IBV_WR_SEND;
+    server_send_wr.send_flags = IBV_SEND_SIGNALED;
+
+    HANDLE_NZ(ibv_post_send(client_res->qp, &server_send_wr, &bad_server_send_wr));
+    info("Send request with memory map ADDRESS is successful \n");
+}
+
 /*
- * Create Memory Buffer for the Server Client Communication. TODO: What sort of memory are we transferring?
+ * Create Memory Buffer for the Server Client Communication.
+ * TODO: What sort of memory are we transferring?
  */
 static void build_memory_map(struct memory_region_struct *conn) {
     conn->memory_region = malloc(DATA_SIZE + (8 * (DATA_SIZE / BLOCK_SIZE)));
-
     for ( int i = 0; i < (DATA_SIZE / BLOCK_SIZE); i++ ) {
-        strcpy(conn->memory_region + (i * BLOCK_SIZE) + (8 * (DATA_SIZE / BLOCK_SIZE)), (const char *) 'A' + i);
+        strcpy(conn->memory_region + (i * BLOCK_SIZE) + (8 * (DATA_SIZE / BLOCK_SIZE)), "A");
     }
-    info("Memory Map initialized: \n");
     print_memory_map(conn->memory_region);
-
     conn->memory_region_mr = rdma_buffer_register(client_res->pd,
                                                   conn->memory_region,
                                                   DATA_SIZE + (8 * (DATA_SIZE / BLOCK_SIZE)),
                                                   (IBV_ACCESS_LOCAL_WRITE |
                                                    IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE));
     conn->mapping_table_start = (unsigned long *) conn->memory_region;
-    debug("Initiated memory map: %p\n", conn->mapping_table_start)
+    debug("Memory Map address - %p\n", conn->mapping_table_start)
 }
 
 /*
@@ -138,37 +177,35 @@ static void build_memory_map(struct memory_region_struct *conn) {
 static void post_send_memory_map(struct memory_region_struct *_region) {
     struct ibv_wc wc;
 
-    if (client_buff.message->type == OFFSET) {
 
-        server_buff.message = malloc(sizeof(struct msg));
-        server_buff.message->type = ADDRESS;
+    server_buff.message = malloc(sizeof(struct msg));
+    server_buff.message->type = FRAME;
 
-        memcpy(&server_buff.message->data.mr, _region->memory_region_mr, sizeof(struct ibv_mr));
-        server_buff.message->data.mr.addr = (void *) (_region->memory_region);
+    memcpy(&server_buff.message->data.mr, _region->memory_region_mr, sizeof(struct ibv_mr));
+    server_buff.message->data.mr.addr = (void *) (_region->memory_region);
 
-        server_buff.buffer = rdma_buffer_register(client_res->pd,
-                                                  server_buff.message,
-                                                  sizeof(struct msg),
-                                                  (IBV_ACCESS_LOCAL_WRITE |
-                                                   IBV_ACCESS_REMOTE_READ |
-                                                   IBV_ACCESS_REMOTE_WRITE));
+    server_buff.buffer = rdma_buffer_register(client_res->pd,
+                                              server_buff.message,
+                                              sizeof(struct msg),
+                                              (IBV_ACCESS_LOCAL_WRITE |
+                                               IBV_ACCESS_REMOTE_READ |
+                                               IBV_ACCESS_REMOTE_WRITE));
 
-        info("Sending ADDRESS... \n");
-        show_exchange_buffer(server_buff.message);
+    info("Sending ADDRESS... \n");
+    show_exchange_buffer(server_buff.message);
 
-        server_send_sge.addr = (uint64_t) server_buff.message;
-        server_send_sge.length = (uint32_t) sizeof(struct msg);
-        server_send_sge.lkey = server_buff.buffer->lkey;
+    server_send_sge.addr = (uint64_t) server_buff.message;
+    server_send_sge.length = (uint32_t) sizeof(struct msg);
+    server_send_sge.lkey = server_buff.buffer->lkey;
 
-        bzero(&server_send_wr, sizeof(server_send_wr));
-        server_send_wr.sg_list = &server_send_sge;
-        server_send_wr.num_sge = 1;
-        server_send_wr.opcode = IBV_WR_SEND;
-        server_send_wr.send_flags = IBV_SEND_SIGNALED;
+    bzero(&server_send_wr, sizeof(server_send_wr));
+    server_send_wr.sg_list = &server_send_sge;
+    server_send_wr.num_sge = 1;
+    server_send_wr.opcode = IBV_WR_SEND;
+    server_send_wr.send_flags = IBV_SEND_SIGNALED;
 
-        HANDLE_NZ(ibv_post_send(client_res->qp, &server_send_wr, &bad_server_send_wr));
-        info("Send request with memory map ADDRESS is successful \n");
-    }
+    HANDLE_NZ(ibv_post_send(client_res->qp, &server_send_wr, &bad_server_send_wr));
+    info("Send request with memory map ADDRESS is successful \n");
 }
 
 static int established_connection() {
@@ -216,6 +253,22 @@ static int disconnect_and_cleanup(struct memory_region_struct *conn) {
     return 0;
 }
 
+int wait_for_update(struct memory_region_struct* _region, int offset) {
+    char * previousValue = "A";
+
+    while(1) {
+        char* str = _region->memory_region + ( 8 * (DATA_SIZE / BLOCK_SIZE)) + (2 * BLOCK_SIZE);
+        if (strcmp(previousValue, str) != 0) {
+            info("Previous String 2: %s\n", previousValue);
+            info("Updating %s to new string %s\n", previousValue, str);
+
+            previousValue = strdup(str);
+            print_memory_map(_region->memory_region);
+        }
+
+    }
+}
+
 static int wait_for_event() {
     int ret;
 
@@ -236,19 +289,24 @@ static int wait_for_event() {
             case RDMA_CM_EVENT_CONNECT_REQUEST:
                 _region = (struct memory_region_struct *) malloc(sizeof(struct memory_region_struct *));
                 rdma_ack_cm_event(received_event); //Ack the event
-                setup_client_resources(cm_event.id, _region); // send a recv req for client_metadata
-                build_memory_map(_region);
-                post_recv_offset();
+                setup_client_resources(cm_event.id); // send a recv req for client_metadata
+                //build_memory_map(_region);
+                post_recv_hello();
                 accept_conn(cm_event.id);
                 break;
 
             /*  After the client establishes the connection */
             case RDMA_CM_EVENT_ESTABLISHED:
                 rdma_ack_cm_event(received_event);
-                poll_for_completion_events(1);
                 established_connection();
-                post_send_memory_map(_region);
                 poll_for_completion_events(1);
+                post_send_hello();
+                poll_for_completion_events(1);
+                post_recv_hello();
+                poll_for_completion_events(1);
+                post_send_memory_map(_region);
+                //poll_for_completion_events(1);
+                //wait_for_update(_region, 2);
                 break;
 
             /* Disconnect and Cleanup */

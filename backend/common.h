@@ -23,11 +23,12 @@
 #define DEFAULT_RDMA_PORT (12345)
 #define MAX_CONNECTION (5)
 #define ENABLE_ERROR
-//#define ENABLE_DEBUG
+#define ENABLE_DEBUG
 
 #define CQ_CAPACITY (16)
 #define MAX_SGE (2)
 #define MAX_WR (10)
+#define TIMEOUTMS (2000)
 
 #define HANDLE(x)  do { if (!(x)) error(#x " failed (returned zero/null).\n"); } while (0)
 #define HANDLE_NZ(x) do { if ( (x)) error(#x " failed (returned non-zero)." ); } while (0)
@@ -63,22 +64,21 @@ struct exchange_buffer {
 
 struct msg {
     enum {
-        OFFSET,
-        ADDRESS
-    }type;
+        HELLO,
+        FRAME
+    } type;
 
     union {
         struct ibv_mr mr;
         unsigned long offset;
-    }data;
+    } data;
 };
 
 int get_addr(char *dst, struct sockaddr *addr);
 void show_exchange_buffer(struct msg *attr);
 void rdma_buffer_free(struct ibv_mr *mr);
 void print_memory_map(const char* memory_region);
-void poll_for_completion_events(int num_wc);
-
+//int process_work_completion_events_without_wait(struct ibv_cq *cq_ptr, struct ibv_wc *wc, int max_wc);
 struct ibv_mr *rdma_buffer_register(struct ibv_pd *pd,
                                     void *addr,
                                     uint32_t length,

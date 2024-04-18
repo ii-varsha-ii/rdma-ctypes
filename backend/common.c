@@ -11,27 +11,14 @@ void print_memory_map(const char* memory_region) {
     info("-------------------\n")
 }
 
-void poll_for_completion_events(int num_wc) {
-    struct ibv_wc wc;
-    int total_wc = process_work_completion_events(client_res->completion_channel, &wc, num_wc);
-
-    for (int i = 0 ; i < total_wc; i++) {
-        if( (&(wc) + i)->opcode & IBV_WC_RECV ) {
-            if ( client_buff.message->type == OFFSET ) {
-                show_exchange_buffer(client_buff.message);
-            }
-        }
-    }
-}
-
 void show_exchange_buffer(struct msg *attr) {
     info("---------------------------------------------------------\n");
     info("message %p\n", attr);
     info("message, type: %d\n", attr->type);
-    if(attr->type == OFFSET) {
-        info("message: offset: %lu \n", attr->data.offset);
+    if(attr->type == HELLO) {
+        info("message: hello: %lu \n", attr->data.offset);
     }
-    if (attr->type == ADDRESS){
+    if (attr->type == FRAME){
         info("message: data.mr.address: %p \n", attr->data.mr.addr);
     }
     info("---------------------------------------------------------\n");
@@ -50,7 +37,7 @@ struct ibv_mr* rdma_buffer_alloc(struct ibv_pd *pd, uint32_t size,
         error("failed to allocate buffer, -ENOMEM\n");
         return NULL;
     }
-    info("Buffer allocated: %p , len: %u \n", buf, size);
+    debug("Buffer allocated: %p , len: %u \n", buf, size);
     mr = rdma_buffer_register(pd, buf, size, permission);
     if(!mr){
         free(buf);
@@ -72,7 +59,7 @@ struct ibv_mr *rdma_buffer_register(struct ibv_pd *pd,
         error("Failed to create mr on buffer, errno: %d \n", -errno);
         return NULL;
     }
-    info("Registered: %p , len: %u , stag: 0x%x \n",
+    debug("Registered: %p , len: %u , stag: 0x%x \n",
          mr->addr,
          (unsigned int) mr->length,
          mr->lkey);
@@ -87,7 +74,7 @@ void rdma_buffer_free(struct ibv_mr *mr)
     }
     void *to_free = mr->addr;
     rdma_buffer_deregister(mr);
-    info("Buffer %p free'ed\n", to_free);
+    debug("Buffer %p free'ed\n", to_free);
     free(to_free);
 }
 
@@ -97,7 +84,7 @@ void rdma_buffer_deregister(struct ibv_mr *mr)
         error("Passed memory region is NULL, ignoring\n");
         return;
     }
-    info("Deregistered: %p , len: %u , stag : 0x%x \n",
+    debug("Deregistered: %p , len: %u , stag : 0x%x \n",
          mr->addr,
          (unsigned int) mr->length,
          mr->lkey);
@@ -161,6 +148,8 @@ int process_work_completion_events(struct ibv_comp_channel *comp_channel,
     );
     return total_wc;
 }
+
+
 
 
 /* Code acknowledgment: rping.c from librdmacm/examples */

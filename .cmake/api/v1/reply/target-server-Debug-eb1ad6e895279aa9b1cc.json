@@ -2,7 +2,7 @@
 	"artifacts" : 
 	[
 		{
-			"path" : "rdma_with_py"
+			"path" : "server"
 		}
 	],
 	"backtrace" : 1,
@@ -10,7 +10,8 @@
 	{
 		"commands" : 
 		[
-			"add_executable"
+			"add_executable",
+			"include_directories"
 		],
 		"files" : 
 		[
@@ -24,7 +25,13 @@
 			{
 				"command" : 0,
 				"file" : 0,
-				"line" : 6,
+				"line" : 28,
+				"parent" : 0
+			},
+			{
+				"command" : 1,
+				"file" : 0,
+				"line" : 26,
 				"parent" : 0
 			}
 		]
@@ -35,21 +42,21 @@
 			"compileCommandFragments" : 
 			[
 				{
-					"fragment" : "-g -arch arm64 -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX14.4.sdk -fcolor-diagnostics"
+					"fragment" : "-g"
+				}
+			],
+			"includes" : 
+			[
+				{
+					"backtrace" : 2,
+					"path" : "/users/nvarsha/rdma_with_py/backend"
 				},
 				{
-					"fragment" : "-std=gnu11"
+					"backtrace" : 2,
+					"path" : "/home/atr/local/include"
 				}
 			],
 			"language" : "C",
-			"languageStandard" : 
-			{
-				"backtraces" : 
-				[
-					1
-				],
-				"standard" : "11"
-			},
 			"sourceIndexes" : 
 			[
 				0,
@@ -57,7 +64,7 @@
 			]
 		}
 	],
-	"id" : "rdma_with_py::@6890427a1f51a3e7e1df",
+	"id" : "server::@6890427a1f51a3e7e1df",
 	"link" : 
 	{
 		"commandFragments" : 
@@ -67,14 +74,27 @@
 				"role" : "flags"
 			},
 			{
-				"fragment" : "",
+				"fragment" : "-rdynamic",
 				"role" : "flags"
+			},
+			{
+				"backtrace" : 1,
+				"fragment" : "-lpthread",
+				"role" : "libraries"
+			},
+			{
+				"fragment" : "-libverbs",
+				"role" : "libraries"
+			},
+			{
+				"fragment" : "-lrdmacm",
+				"role" : "libraries"
 			}
 		],
 		"language" : "C"
 	},
-	"name" : "rdma_with_py",
-	"nameOnDisk" : "rdma_with_py",
+	"name" : "server",
+	"nameOnDisk" : "server",
 	"paths" : 
 	{
 		"build" : ".",
@@ -96,7 +116,7 @@
 		{
 			"backtrace" : 1,
 			"compileGroupIndex" : 0,
-			"path" : "backend/client.c",
+			"path" : "backend/common.c",
 			"sourceGroupIndex" : 0
 		},
 		{

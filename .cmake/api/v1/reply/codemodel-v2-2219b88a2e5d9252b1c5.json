@@ -9,13 +9,14 @@
 					"jsonFile" : "directory-.-Debug-f5ebdc15457944623624.json",
 					"minimumCMakeVersion" : 
 					{
-						"string" : "3.25"
+						"string" : "2.6"
 					},
 					"projectIndex" : 0,
 					"source" : ".",
 					"targetIndexes" : 
 					[
-						0
+						0,
+						1
 					]
 				}
 			],
@@ -27,10 +28,11 @@
 					[
 						0
 					],
-					"name" : "rdma_with_py",
+					"name" : "rdma-example",
 					"targetIndexes" : 
 					[
-						0
+						0,
+						1
 					]
 				}
 			],
@@ -38,9 +40,16 @@
 			[
 				{
 					"directoryIndex" : 0,
-					"id" : "rdma_with_py::@6890427a1f51a3e7e1df",
-					"jsonFile" : "target-rdma_with_py-Debug-2c33a08fc18b1019c2c0.json",
-					"name" : "rdma_with_py",
+					"id" : "client::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-client-Debug-be5c03abefe4d44dde5f.json",
+					"name" : "client",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "server::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-server-Debug-eb1ad6e895279aa9b1cc.json",
+					"name" : "server",
 					"projectIndex" : 0
 				}
 			]
@@ -49,12 +58,12 @@
 	"kind" : "codemodel",
 	"paths" : 
 	{
-		"build" : "/Users/varshanatarajan/Documents/Spring 2024/rdma_with_py/cmake-build-debug",
-		"source" : "/Users/varshanatarajan/Documents/Spring 2024/rdma_with_py"
+		"build" : "/users/nvarsha/rdma_with_py",
+		"source" : "/users/nvarsha/rdma_with_py"
 	},
 	"version" : 
 	{
 		"major" : 2,
-		"minor" : 4
+		"minor" : 3
 	}
 }
