@@ -1,7 +1,7 @@
 # Prerequisites
 *.d
 
-CMakeFiles/
+server_client_c/cmake-build-debug/CMakeFiles/
 
 # Object files
 *.o
@@ -53,6 +53,8 @@ Module.symvers
 Mkfile.old
 dkms.conf
 
-.idea/
+../.idea/
 .cmake/
-cmake-build-debug/
+server_client_c/cmake-build-debug/
+server_client_c/cmake_install.cmake
+server_client_c/CMakeCache.txt
