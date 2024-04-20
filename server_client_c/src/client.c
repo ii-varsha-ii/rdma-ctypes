@@ -5,6 +5,8 @@ static struct ibv_send_wr client_send_wr, *bad_client_send_wr = NULL;
 static struct ibv_recv_wr server_recv_wr, *bad_server_recv_wr = NULL;
 static struct ibv_sge client_send_sge, server_recv_sge;
 
+int connect_server(struct sockaddr_in *s_addr, const char* str_to_send);
+
 /*
  * Create client ID and resolve the destination IP address to RDMA Address
  */
@@ -245,25 +247,25 @@ static int wait_for_event(struct sockaddr_in *s_addr, const char* str_to_send) {
 }
 
 
-static int connect_server(struct sockaddr_in *s_addr, const char* str_to_send) {
+int connect_server(struct sockaddr_in *s_addr, const char* str_to_send) {
     return wait_for_event(s_addr, str_to_send);
 }
 
 
-int main(int argc, char **argv) {
-    struct sockaddr_in server_sockaddr;
-    int ret;
-
-    bzero(&server_sockaddr, sizeof server_sockaddr);
-    server_sockaddr.sin_family = AF_INET;
-    server_sockaddr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-
-    ret = get_addr("10.10.1.2", (struct sockaddr *) &server_sockaddr);
-    if (ret) {
-        error("Invalid dst addr");
-        return ret;
-    }
-    server_sockaddr.sin_port = htons(DEFAULT_RDMA_PORT);
-    connect_server(&server_sockaddr, "hellomydear");
-    return ret;
-}
+//int main(int argc, char **argv) {
+//    struct sockaddr_in server_sockaddr;
+//    int ret;
+//
+//    bzero(&server_sockaddr, sizeof server_sockaddr);
+//    server_sockaddr.sin_family = AF_INET;
+//    server_sockaddr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+//
+//    ret = get_addr("10.10.1.2", (struct sockaddr *) &server_sockaddr);
+//    if (ret) {
+//        error("Invalid dst addr");
+//        return ret;
+//    }
+//    server_sockaddr.sin_port = htons(DEFAULT_RDMA_PORT);
+//    connect_server(&server_sockaddr, "hellomydear");
+//    return ret;
+//}

@@ -1,0 +1,1 @@
+/usr/bin/cc -g -rdynamic CMakeFiles/server.dir/src/utils.c.o CMakeFiles/server.dir/src/server.c.o -o server  -lpthread -libverbs -lrdmacm 

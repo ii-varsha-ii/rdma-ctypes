@@ -1,0 +1,1 @@
+/usr/bin/cc -fPIC -g -shared -Wl,-soname,librdma_server_lib.so -o librdma_server_lib.so CMakeFiles/rdma_server_lib.dir/src/utils.c.o CMakeFiles/rdma_server_lib.dir/src/server.c.o  -lpthread -libverbs -lrdmacm 

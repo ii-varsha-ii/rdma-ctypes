@@ -5,6 +5,10 @@ static struct ibv_recv_wr client_recv_wr, *bad_client_recv_wr = NULL;
 static struct ibv_send_wr server_send_wr, *bad_server_send_wr = NULL;
 static struct ibv_sge client_recv_sge, server_send_sge;
 
+/* function prototypes */
+void start_rdma_server(struct sockaddr_in *server_sockaddr);
+
+
 /* Setup client resources like PD, CC, CQ and QP */
 static void setup_client_resources(struct rdma_cm_id *cm_client_id) {
     /* Init the client resources */
@@ -242,7 +246,7 @@ static int wait_for_event() {
     return ret;
 }
 
-static void start_rdma_server(struct sockaddr_in *server_sockaddr) {
+void start_rdma_server(struct sockaddr_in *server_sockaddr) {
     // Create RDMA Event Channel
     HANDLE(cm_event_channel = rdma_create_event_channel());
 
@@ -262,12 +266,12 @@ static void start_rdma_server(struct sockaddr_in *server_sockaddr) {
     return;
 }
 
-int main(int argc, char **argv) {
-    struct sockaddr_in server_sockaddr;
-
-    bzero(&server_sockaddr, sizeof(server_sockaddr));
-    server_sockaddr.sin_family = AF_INET;
-    server_sockaddr.sin_addr.s_addr = htonl(INADDR_ANY);
-    server_sockaddr.sin_port = htons(DEFAULT_RDMA_PORT);
-    start_rdma_server(&server_sockaddr);
-}
+//int main(int argc, char **argv) {
+//    struct sockaddr_in server_sockaddr;
+//
+//    bzero(&server_sockaddr, sizeof(server_sockaddr));
+//    server_sockaddr.sin_family = AF_INET;
+//    server_sockaddr.sin_addr.s_addr = htonl(INADDR_ANY);
+//    server_sockaddr.sin_port = htons(DEFAULT_RDMA_PORT);
+//    start_rdma_server(&server_sockaddr);
+//}
