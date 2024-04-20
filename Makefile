@@ -166,33 +166,6 @@ backend/client.c.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/client.dir/build.make CMakeFiles/client.dir/backend/client.c.s
 .PHONY : backend/client.c.s
 
-backend/common.o: backend/common.c.o
-.PHONY : backend/common.o
-
-# target to build an object file
-backend/common.c.o:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/server.dir/build.make CMakeFiles/server.dir/backend/common.c.o
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/client.dir/build.make CMakeFiles/client.dir/backend/common.c.o
-.PHONY : backend/common.c.o
-
-backend/common.i: backend/common.c.i
-.PHONY : backend/common.i
-
-# target to preprocess a source file
-backend/common.c.i:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/server.dir/build.make CMakeFiles/server.dir/backend/common.c.i
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/client.dir/build.make CMakeFiles/client.dir/backend/common.c.i
-.PHONY : backend/common.c.i
-
-backend/common.s: backend/common.c.s
-.PHONY : backend/common.s
-
-# target to generate assembly for a file
-backend/common.c.s:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/server.dir/build.make CMakeFiles/server.dir/backend/common.c.s
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/client.dir/build.make CMakeFiles/client.dir/backend/common.c.s
-.PHONY : backend/common.c.s
-
 backend/server.o: backend/server.c.o
 .PHONY : backend/server.o
 
@@ -217,6 +190,33 @@ backend/server.c.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/server.dir/build.make CMakeFiles/server.dir/backend/server.c.s
 .PHONY : backend/server.c.s
 
+backend/utils.o: backend/utils.c.o
+.PHONY : backend/utils.o
+
+# target to build an object file
+backend/utils.c.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/server.dir/build.make CMakeFiles/server.dir/backend/utils.c.o
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/client.dir/build.make CMakeFiles/client.dir/backend/utils.c.o
+.PHONY : backend/utils.c.o
+
+backend/utils.i: backend/utils.c.i
+.PHONY : backend/utils.i
+
+# target to preprocess a source file
+backend/utils.c.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/server.dir/build.make CMakeFiles/server.dir/backend/utils.c.i
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/client.dir/build.make CMakeFiles/client.dir/backend/utils.c.i
+.PHONY : backend/utils.c.i
+
+backend/utils.s: backend/utils.c.s
+.PHONY : backend/utils.s
+
+# target to generate assembly for a file
+backend/utils.c.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/server.dir/build.make CMakeFiles/server.dir/backend/utils.c.s
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/client.dir/build.make CMakeFiles/client.dir/backend/utils.c.s
+.PHONY : backend/utils.c.s
+
 # Help Target
 help:
 	@echo "The following are some of the valid targets for this Makefile:"
@@ -230,12 +230,12 @@ help:
 	@echo "... backend/client.o"
 	@echo "... backend/client.i"
 	@echo "... backend/client.s"
-	@echo "... backend/common.o"
-	@echo "... backend/common.i"
-	@echo "... backend/common.s"
 	@echo "... backend/server.o"
 	@echo "... backend/server.i"
 	@echo "... backend/server.s"
+	@echo "... backend/utils.o"
+	@echo "... backend/utils.i"
+	@echo "... backend/utils.s"
 .PHONY : help
 
 

@@ -25,5 +25,5 @@ link_libraries(pthread ${IBVERBS_LIBRARY} ${RDMACM_LIBRARY} ${HIREDIS_LIBRARY})
 
 include_directories("${PROJECT_SOURCE_DIR}" "/home/atr/local/include/")
 
-add_executable(server ${PROJECT_SOURCE_DIR}/common.c ${PROJECT_SOURCE_DIR}/server.c)
-add_executable(client ${PROJECT_SOURCE_DIR}/common.c ${PROJECT_SOURCE_DIR}/client.c)
+add_executable(server ${PROJECT_SOURCE_DIR}/utils.c ${PROJECT_SOURCE_DIR}/structs.h ${PROJECT_SOURCE_DIR}/server.c)
+add_executable(client ${PROJECT_SOURCE_DIR}/utils.c ${PROJECT_SOURCE_DIR}/structs.h ${PROJECT_SOURCE_DIR}/client.c)

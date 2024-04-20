@@ -19,6 +19,7 @@
 
 #include <rdma/rdma_cma.h>
 #include <infiniband/verbs.h>
+#include "structs.h"
 
 #define DEFAULT_RDMA_PORT (12345)
 #define MAX_CONNECTION (5)
@@ -54,39 +55,27 @@
     fprintf(stdout, "log: "msg, ## args);\
 }while(0);
 
-#define DATA_SIZE (1024 * 1024 * 5)
-#define BLOCK_SIZE (1024 * 1024)
 
-struct exchange_buffer {
-    struct msg* message;
-    struct ibv_mr* buffer;
-};
-
-struct msg {
-    enum {
-        HELLO,
-        FRAME
-    } type;
-
-    union {
-        struct ibv_mr mr;
-        unsigned long offset;
-    } data;
-};
+#define DATA_SIZE (1024 * 1024 * 10)
 
 int get_addr(char *dst, struct sockaddr *addr);
+
+
+void show_memory_map(const char* memory_region);
 void show_exchange_buffer(struct msg *attr);
-void rdma_buffer_free(struct ibv_mr *mr);
-void print_memory_map(const char* memory_region);
-//int process_work_completion_events_without_wait(struct ibv_cq *cq_ptr, struct ibv_wc *wc, int max_wc);
+int disconnect_and_cleanup(struct per_client_resources* client_res, struct memory_region* region);
+
 struct ibv_mr *rdma_buffer_register(struct ibv_pd *pd,
                                     void *addr,
                                     uint32_t length,
                                     enum ibv_access_flags permission);
 void rdma_buffer_deregister(struct ibv_mr *mr);
+void rdma_buffer_free(struct ibv_mr *mr);
+struct ibv_mr* rdma_buffer_alloc(struct ibv_pd *pd, uint32_t size,
+                                 enum ibv_access_flags permission);
 
-int process_work_completion_events(struct ibv_comp_channel *comp_channel,
-                                   struct ibv_wc *wc,
-                                   int max_wc);
+int process_work_completion_events(struct ibv_cq *cq, struct ibv_wc *wc, int max_wc);
+int poll_for_completion_events(struct ibv_cq *cq, struct ibv_wc *wc, int num_wc);
+
 
 #endif //RDMA_WITH_PY_COMMON_H

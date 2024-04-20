@@ -1,17 +1,15 @@
-#include "common.h"
+#include "utils.h"
 
 
-void print_memory_map(const char* memory_region) {
+void show_memory_map(const char* memory_region) {
     info("-------------------\n")
-    info("Memory Map\n")
-    info("-------------------\n")
-    for(int i = 0; i < (DATA_SIZE / BLOCK_SIZE); i++) {
-        info("%d:%s \n", i, memory_region + (i * BLOCK_SIZE) + (8 * (DATA_SIZE / BLOCK_SIZE)));
-    }
-    info("-------------------\n")
+    info("Memory Map: %s \n", memory_region);
+    info("-------------------\n");
 }
 
 void show_exchange_buffer(struct msg *attr) {
+    info("---------------------------------------------------------\n");
+    info("------------EXCHANGE BUFFER------------\n");
     info("---------------------------------------------------------\n");
     info("message %p\n", attr);
     info("message, type: %d\n", attr->type);
@@ -91,66 +89,90 @@ void rdma_buffer_deregister(struct ibv_mr *mr)
     ibv_dereg_mr(mr);
 }
 
-int process_work_completion_events(struct ibv_comp_channel *comp_channel,
-                                    struct ibv_wc *wc, int max_wc)
-{
-    struct ibv_cq *cq_ptr = NULL;
-    void *context = NULL;
-    int ret = -1, i, total_wc = 0;
-
-    /* We wait for the notification on the CQ channel */
-    ret = ibv_get_cq_event(comp_channel, /* IO channel where we are expecting the notification */
-                           &cq_ptr, /* which CQ has an activity. This should be the same as CQ we created before */
-                           &context); /* Associated CQ user context, which we did set */
+int process_work_completion_events(struct ibv_cq *cq, struct ibv_wc *wc, int max_wc) {
+    int total_wc, i;
+    int ret = -1;
+    ret = ibv_req_notify_cq(cq, 0);
     if (ret) {
-        error("Failed to get next CQ event due to %d \n", -errno);
-        return -errno;
-    }
-
-    /* Request for more notifications. */
-    ret = ibv_req_notify_cq(cq_ptr, 0);
-    if (ret){
         error("Failed to request further notifications %d \n", -errno);
         return -errno;
     }
-    /* We got notification. We reap the work completion (WC) element. It is
-    * unlikely but a good practice it write the CQ polling code that
-    * can handle zero WCs. ibv_poll_cq can return zero. Same logic as
-    * MUTEX conditional variables in pthread programming.
-    */
-    // poll through the cq and get all the notifications
     total_wc = 0;
     do {
-        ret = ibv_poll_cq(cq_ptr /* the CQ, we got notification for */,
+        ret = ibv_poll_cq(cq /* the CQ, we got notification for */,
                           max_wc - total_wc /* number of remaining WC elements*/,
                           wc + total_wc/* where to store */);
         if (ret < 0) {
             error("Failed to poll cq for wc due to %d \n", ret);
-            /* ret is errno here */
             return ret;
         }
         total_wc += ret;
     } while (total_wc < max_wc);
-
     debug("%d WC are completed \n", total_wc)
-    /* Now we check validity and status of I/O work completions */
-    for( i = 0 ; i < total_wc ; i++) {
+    for (i = 0; i < total_wc; i++) {
         if (wc[i].status != IBV_WC_SUCCESS) {
             error("Work completion (WC) has error status: %s at index %d \n",
                   ibv_wc_status_str(wc[i].status), i);
-            /* return negative value */
             return -(wc[i].status);
         }
     }
-    /* Similar to connection management events, we need to acknowledge CQ events */
-    ibv_ack_cq_events(cq_ptr,
-                      1 /* we received one event notification */
-    );
+    ibv_ack_cq_events(cq, 1);
     return total_wc;
 }
 
+int poll_for_completion_events(struct ibv_cq *cq, struct ibv_wc *wc, int num_wc) {
+    int total_wc = process_work_completion_events(cq, wc, num_wc);
+    return total_wc;
+}
 
+int disconnect_and_cleanup(struct per_client_resources* client_res, struct memory_region* region) {
+    int ret = -1;
+    ret = rdma_disconnect(client_res->client_id);
+    if (ret) {
+        error("Failed to disconnect, errno: %d \n", -errno);
+    }
 
+    /* Destroy QP */
+    rdma_destroy_qp(client_res->client_id);
+
+    /* Destroy CQ */
+    ret = ibv_destroy_cq(client_res->cq);
+    if (ret) {
+        error("Failed to destroy completion queue cleanly, %d \n", -errno);
+    }
+
+    /* Destroy completion channel */
+    ret = ibv_destroy_comp_channel(client_res->completion_channel);
+    if (ret) {
+        error("Failed to destroy completion channel cleanly, %d \n", -errno);
+    }
+    /* Destroy rdma server id */
+    ret = rdma_destroy_id(cm_server_id);
+    if (ret) {
+        error("Failed to destroy server id cleanly, %d \n", -errno);
+    }
+
+    /* Destroy client cm id */
+    ret = rdma_destroy_id(client_res->client_id);
+    if (ret) {
+        error("Failed to destroy client id cleanly, %d \n", -errno);
+    }
+
+    rdma_buffer_deregister(server_buff.buffer);
+    rdma_buffer_deregister(client_buff.buffer);
+
+    /* Destroy protection domain */
+    ret = ibv_dealloc_pd(client_res->pd);
+    if (ret) {
+        error("Failed to destroy client protection domain cleanly, %d \n", -errno);
+
+    }
+    rdma_destroy_event_channel(cm_event_channel);
+    free(client_res);
+    free(region);
+    printf("Client resource clean up is complete \n");
+    return 0;
+}
 
 /* Code acknowledgment: rping.c from librdmacm/examples */
 int get_addr(char *dst, struct sockaddr *addr)
