@@ -1,6 +1,6 @@
 # Prerequisites
 *.d
-
+.idea/
 server_client_c/cmake-build-debug/CMakeFiles/
 
 # Object files
