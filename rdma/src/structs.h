@@ -23,7 +23,7 @@
 static struct rdma_cm_id *cm_server_id = NULL;
 static struct rdma_cm_id *cm_client_id = NULL;
 static struct exchange_buffer server_buff, client_buff;
-static struct per_client_resources *client_res = NULL;
+static struct client_resources *client_res = NULL;
 static struct rdma_event_channel *cm_event_channel = NULL;
 static struct ibv_qp_init_attr qp_init_attr; // client queue pair attributes
 
@@ -44,12 +44,12 @@ struct msg {
     } data;
 };
 
-struct per_client_resources {
+struct client_resources {
     struct ibv_pd *pd;
     struct ibv_cq *cq;
-    struct ibv_comp_channel *completion_channel;
+    struct ibv_comp_channel *comp_channel;
     struct ibv_qp *qp;
-    struct rdma_cm_id *client_id;
+    struct rdma_cm_id *id;
 };
 
 struct memory_region {

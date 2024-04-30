@@ -54,6 +54,10 @@
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
   </component>
+  <component name="HighlightingSettingsPerFile">
+    <setting file="file:///usr/include/infiniband/verbs.h" root0="SKIP_INSPECTION" />
+    <setting file="file:///usr/include/rdma/rdma_cma.h" root0="SKIP_INSPECTION" />
+  </component>
   <component name="MarkdownSettingsMigration">
     <option name="stateVersion" value="1" />
   </component>
@@ -101,7 +105,7 @@
       <window_info id="Merge Requests" />
       <window_info id="Commit_Guest" />
       <window_info id="Pull Requests" />
-      <window_info active="true" content_ui="combo" id="Project" order="0" visible="true" weight="0.053125" />
+      <window_info active="true" content_ui="combo" id="Project" order="0" visible="true" weight="0.19062501" />
       <window_info id="Commit" order="1" weight="0.25" />
       <window_info id="Structure" order="2" side_tool="true" weight="0.25" />
       <window_info anchor="bottom" id="CMake" weight="0.33047944" />
@@ -111,15 +115,16 @@
       <window_info anchor="bottom" id="TODO" />
       <window_info anchor="bottom" id="File Transfer" />
       <window_info anchor="bottom" id="Vcpkg" />
+      <window_info anchor="bottom" id="Find" show_stripe_button="false" weight="0.33047944" />
       <window_info anchor="bottom" id="clangd" />
       <window_info anchor="bottom" id="Version Control" order="0" />
-      <window_info anchor="bottom" id="Problems View" order="2" weight="0.4423516" />
-      <window_info active="true" anchor="bottom" id="Terminal" order="3" visible="true" weight="0.55308217" />
-      <window_info anchor="bottom" id="Services" order="4" />
+      <window_info anchor="bottom" id="Problems View" order="1" weight="0.4423516" />
+      <window_info anchor="bottom" id="Terminal" order="3" weight="0.33047944" />
+      <window_info anchor="bottom" id="Services" order="3" />
       <window_info anchor="right" id="make" side_tool="true" />
       <window_info anchor="right" id="Meet New UI" side_tool="true" />
       <window_info anchor="right" content_ui="combo" id="Notifications" order="0" weight="0.25" />
-      <window_info anchor="right" id="Database" order="2" weight="0.25" />
+      <window_info anchor="right" id="Database" order="1" weight="0.25" />
     </layout>
   </component>
   <component name="RecentsManager">
@@ -311,7 +316,7 @@
     <breakpoint-manager>
       <breakpoints>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/server_client_c/main.py</url>
+          <url>file://$PROJECT_DIR$/rdma/main.py</url>
           <line>8</line>
           <option name="timeStamp" value="1" />
         </line-breakpoint>

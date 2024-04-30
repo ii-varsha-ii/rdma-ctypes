@@ -1,8 +1,8 @@
 # Prerequisites
 *.d
 .idea/
-server_client_c/cmake-build-debug/CMakeFiles/
-server_client_c/CMakeFiles/
+rdma/cmake-build-debug/CMakeFiles/
+rdma/CMakeFiles/
 # Object files
 *.o
 *.ko
@@ -55,6 +55,6 @@ dkms.conf
 
 ../.idea/
 .cmake/
-server_client_c/cmake-build-debug/
-server_client_c/cmake_install.cmake
-server_client_c/CMakeCache.txt
+rdma/cmake-build-debug/
+rdma/cmake_install.cmake
+rdma/CMakeCache.txt

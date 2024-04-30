@@ -5,13 +5,14 @@ static struct ibv_send_wr client_send_wr, *bad_client_send_wr = NULL;
 static struct ibv_recv_wr server_recv_wr, *bad_server_recv_wr = NULL;
 static struct ibv_sge client_send_sge, server_recv_sge;
 
+#define CLIENT_HELLO (123)
 int connect_server(struct sockaddr_in *s_addr, const char* str_to_send);
 
 /*
  * Create client ID and resolve the destination IP address to RDMA Address
  */
 static void resolve_addr(struct sockaddr_in *s_addr) {
-    client_res = (struct per_client_resources *) malloc(sizeof(struct per_client_resources));
+    client_res = (struct client_resources *) malloc(sizeof(struct client_resources));
 
     /* Init Event Channel */
     HANDLE(cm_event_channel = rdma_create_event_channel());
@@ -21,10 +22,10 @@ static void resolve_addr(struct sockaddr_in *s_addr) {
     HANDLE_NZ(rdma_create_id(cm_event_channel, &cm_client_id,
                              NULL,
                              RDMA_PS_TCP));
-    client_res->client_id = cm_client_id;
+    client_res->id = cm_client_id;
 
     /* Resolve IP address to RDMA address and bind to client_id */
-    HANDLE_NZ(rdma_resolve_addr(client_res->client_id, NULL, (struct sockaddr *) s_addr, TIMEOUTMS));
+    HANDLE_NZ(rdma_resolve_addr(client_res->id, NULL, (struct sockaddr *) s_addr, TIMEOUTMS));
     debug("waiting for cm event: RDMA_CM_EVENT_ADDR_RESOLVED\n")
 }
 
@@ -35,18 +36,18 @@ static int setup_client_resources(struct sockaddr_in *s_addr) {
          ntohs(s_addr->sin_port));
 
     // Init Protection Domain
-    HANDLE(client_res->pd = ibv_alloc_pd(client_res->client_id->verbs));
+    HANDLE(client_res->pd = ibv_alloc_pd(client_res->id->verbs));
     debug("Protection Domain (PD) allocated: %p \n", client_res->pd)
 
     // Init Completion Channel
-    HANDLE(client_res->completion_channel = ibv_create_comp_channel(cm_client_id->verbs));
-    debug("Completion channel created: %p \n", client_res->completion_channel)
+    HANDLE(client_res->comp_channel = ibv_create_comp_channel(cm_client_id->verbs));
+    debug("Completion channel created: %p \n", client_res->comp_channel)
 
     // Init Completion Queue
-    HANDLE(client_res->cq = ibv_create_cq(client_res->client_id->verbs /* which device*/,
+    HANDLE(client_res->cq = ibv_create_cq(client_res->id->verbs /* which device*/,
                                           CQ_CAPACITY /* maximum capacity*/,
                                           NULL /* user context, not used here */,
-                                          client_res->completion_channel /* which IO completion channel */,
+                                          client_res->comp_channel /* which IO completion channel */,
                                           0 /* signaling vector, not used here*/));
     debug("CQ created: %p with %d elements \n", client_res->cq, client_res->cq->cqe)
 
@@ -64,7 +65,7 @@ static int setup_client_resources(struct sockaddr_in *s_addr) {
     qp_init_attr.recv_cq = client_res->cq;
     qp_init_attr.send_cq = client_res->cq;
 
-    HANDLE_NZ(rdma_create_qp(client_res->client_id,
+    HANDLE_NZ(rdma_create_qp(client_res->id,
                              client_res->pd,
                              &qp_init_attr));
 
@@ -76,11 +77,11 @@ static int setup_client_resources(struct sockaddr_in *s_addr) {
 /*
  * Send HELLO message to server
  */
-static int send_hello_to_server(int offset) {
+static int send_hello_to_server() {
     debug("Register Client Buffer")
     client_buff.message = malloc(sizeof(struct msg));
     client_buff.message->type = HELLO;
-    client_buff.message->data.offset = offset;
+    client_buff.message->data.offset = CLIENT_HELLO;
 
     HANDLE(client_buff.buffer = rdma_buffer_register(client_res->pd,
                                                      client_buff.message,
@@ -139,29 +140,30 @@ static int receive_hello_from_server() {
  * Register a memory buffer for the local memory region with the pd,
  * memory address, length and permissions.
  * */
-static void build_message_buffer(struct memory_region *conn, const char* str_to_send) {
-    conn->memory_region = malloc(DATA_SIZE);
-    strcpy(conn->memory_region, str_to_send);
+static void build_message_buffer(struct memory_region *region, const char* str_to_send) {
+    region->memory_region = malloc(DATA_SIZE);
+    strcpy(region->memory_region, str_to_send);
 
-    conn->memory_region_mr = rdma_buffer_register(client_res->pd,
-                                                        conn->memory_region,
+    region->memory_region_mr = rdma_buffer_register(client_res->pd,
+                                                    region->memory_region,
                                                         DATA_SIZE,
                                                         (IBV_ACCESS_LOCAL_WRITE |
                                                          IBV_ACCESS_REMOTE_READ |
                                                          IBV_ACCESS_REMOTE_WRITE));
 
-    debug("Memory Region registration successful: %p\n", (unsigned long *) conn->memory_region);
+    debug("Memory Region registration successful: %p\n", (unsigned long *) region->memory_region);
 }
 
 /*
  * Send the registered memory region to the server as a FRAME message type
  */
-static void send_message_to_server(struct memory_region *_region) {
+static void send_message_to_server(struct memory_region *region) {
+    struct ibv_wc wc;
     client_buff.message = malloc(sizeof(struct msg));
     client_buff.message->type = FRAME;
 
-    memcpy(&client_buff.message->data.mr, _region->memory_region_mr, sizeof(struct ibv_mr));
-    client_buff.message->data.mr.addr = (void *) (_region->memory_region);
+    memcpy(&client_buff.message->data.mr, region->memory_region_mr, sizeof(struct ibv_mr));
+    client_buff.message->data.mr.addr = (void *) (region->memory_region);
 
     client_buff.buffer = rdma_buffer_register(client_res->pd,
                                               client_buff.message,
@@ -183,6 +185,7 @@ static void send_message_to_server(struct memory_region *_region) {
     client_send_wr.send_flags = IBV_SEND_SIGNALED;
 
     HANDLE_NZ(ibv_post_send(client_res->qp, &client_send_wr, &bad_client_send_wr));
+    process_work_completion_events(client_res->comp_channel, &wc, 1);
     info("POST MESSAGE TO SERVER \n");
 }
 
@@ -193,7 +196,17 @@ static void connect_to_server() {
     conn_param.initiator_depth = 3;
     conn_param.responder_resources = 3;
     conn_param.retry_count = 3;
-    HANDLE_NZ(rdma_connect(client_res->client_id, &conn_param));
+    HANDLE_NZ(rdma_connect(client_res->id, &conn_param));
+}
+
+static int verify_offset_match() {
+    if (server_buff.message->type == HELLO && server_buff.message->data.offset == CLIENT_HELLO + 1) {
+        info("Offset matches with server \n");
+    } else {
+        error("Offset mismatch: HELLO communication failed \n");
+        return -1;
+    }
+    return 0;
 }
 
 /*
@@ -203,7 +216,7 @@ static void connect_to_server() {
 static int wait_for_event(struct sockaddr_in *s_addr, const char* str_to_send) {
 
     struct rdma_cm_event *received_event = NULL;
-    struct memory_region *_region = NULL;
+    struct memory_region *frame = NULL;
 
     resolve_addr(s_addr);
     while (rdma_get_cm_event(cm_event_channel, &received_event) == 0) {
@@ -211,36 +224,36 @@ static int wait_for_event(struct sockaddr_in *s_addr, const char* str_to_send) {
         struct rdma_cm_event cm_event;
         memcpy(&cm_event, received_event, sizeof(*received_event));
         info("%s event received \n", rdma_event_str(cm_event.event));
-
+        HANDLE_NZ(rdma_ack_cm_event(received_event));
         switch (cm_event.event) {
             /* RDMA Address Resolution completed successfully */
             case RDMA_CM_EVENT_ADDR_RESOLVED:
-                HANDLE_NZ(rdma_ack_cm_event(received_event));
-                rdma_resolve_route(client_res->client_id, TIMEOUTMS);
+                rdma_resolve_route(client_res->id, TIMEOUTMS);
                 break;
 
                 /* RDMA Route established successfully */
             case RDMA_CM_EVENT_ROUTE_RESOLVED:
-                _region = (struct memory_region *) malloc(sizeof(struct memory_region *));
-                HANDLE_NZ(rdma_ack_cm_event(received_event));
+                frame = (struct memory_region *) malloc(sizeof(struct memory_region *));
                 setup_client_resources(s_addr);
                 receive_hello_from_server();
-                build_message_buffer(_region, str_to_send);
+                build_message_buffer(frame, str_to_send);
                 connect_to_server();
                 break;
 
             case RDMA_CM_EVENT_ESTABLISHED:
-                HANDLE_NZ(rdma_ack_cm_event(received_event));
-                send_hello_to_server(123);
-                poll_for_completion_events(client_res->cq, &wc, 2);
-                send_message_to_server(_region);
-                rdma_disconnect(cm_client_id);
+                send_hello_to_server();
+                process_work_completion_events(client_res->comp_channel, &wc, 2);
+                int ret = verify_offset_match();
+                if (ret == -1) {
+                    rdma_disconnect(client_res->id);
+                    return 0;
+                }
+                send_message_to_server(frame);
+                rdma_disconnect(client_res->id);
                 break;
 
             case RDMA_CM_EVENT_DISCONNECTED:
-                HANDLE_NZ(rdma_ack_cm_event(received_event));
-                info("%s event received \n", rdma_event_str(cm_event.event));
-                client_disconnect_and_cleanup(client_res);
+                disconnect_client(client_res, cm_event_channel, frame, &server_buff, &client_buff);
                 return 0;
             default:
                 error("Event not found %s", (char *) cm_event.event);
@@ -251,24 +264,24 @@ static int wait_for_event(struct sockaddr_in *s_addr, const char* str_to_send) {
 
 
 int connect_server(struct sockaddr_in *s_addr, const char* str_to_send) {
-    return wait_for_event(s_addr, str_to_send);
+    wait_for_event(s_addr, str_to_send);
 }
 
 
-int main(int argc, char **argv) {
-    struct sockaddr_in server_sockaddr;
-    int ret;
-
-    bzero(&server_sockaddr, sizeof server_sockaddr);
-    server_sockaddr.sin_family = AF_INET;
-    server_sockaddr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-
-    ret = get_addr("10.10.1.2", (struct sockaddr *) &server_sockaddr);
-    if (ret) {
-        error("Invalid dst addr");
-        return ret;
-    }
-    server_sockaddr.sin_port = htons(1234);
-    connect_server(&server_sockaddr, "hellomydear");
-    return ret;
-}
+//int main(int argc, char **argv) {
+//    struct sockaddr_in server_sockaddr;
+//    int ret;
+//
+//    bzero(&server_sockaddr, sizeof server_sockaddr);
+//    server_sockaddr.sin_family = AF_INET;
+//    server_sockaddr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+//
+//    ret = get_addr("10.10.1.2", (struct sockaddr *) &server_sockaddr);
+//    if (ret) {
+//        error("Invalid dst addr");
+//        return ret;
+//    }
+//    server_sockaddr.sin_port = htons(1234);
+//    connect_server(&server_sockaddr, "teststring");
+//    return ret;
+//}

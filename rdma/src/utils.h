@@ -55,16 +55,16 @@
     fprintf(stdout, "log: "msg, ## args);\
 }while(0);
 
-
 #define DATA_SIZE (1024 * 1024 * 10)
 
 int get_addr(char *dst, struct sockaddr *addr);
 
-
 void show_memory_map(const char* memory_region);
 void show_exchange_buffer(struct msg *attr);
-int server_disconnect_and_cleanup(struct per_client_resources* client_res);
-int client_disconnect_and_cleanup(struct per_client_resources* client_res);
+
+int disconnect_server(struct client_resources* client_res, struct rdma_event_channel *cm_event_channel, struct rdma_cm_id *cm_server_id);
+int disconnect_client(struct client_resources* client_res, struct rdma_event_channel *cm_event_channel, struct memory_region* region, struct exchange_buffer *server_buff, struct exchange_buffer *client_buff);
+
 struct ibv_mr *rdma_buffer_register(struct ibv_pd *pd,
                                     void *addr,
                                     uint32_t length,
@@ -74,8 +74,6 @@ void rdma_buffer_free(struct ibv_mr *mr);
 struct ibv_mr* rdma_buffer_alloc(struct ibv_pd *pd, uint32_t size,
                                  enum ibv_access_flags permission);
 
-int process_work_completion_events(struct ibv_cq *cq, struct ibv_wc *wc, int max_wc);
-int poll_for_completion_events(struct ibv_cq *cq, struct ibv_wc *wc, int num_wc);
-
+int process_work_completion_events(struct ibv_comp_channel *comp_channel, struct ibv_wc *wc, int max_wc);
 
 #endif //RDMA_WITH_PY_COMMON_H

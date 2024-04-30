@@ -57,10 +57,10 @@ RM = /usr/bin/cmake -E rm -f
 EQUALS = =
 
 # The top-level source directory on which CMake was run.
-CMAKE_SOURCE_DIR = /users/nvarsha/rdma_with_py/server_client_c
+CMAKE_SOURCE_DIR = /users/nvarsha/rdma_with_py/rdma
 
 # The top-level build directory on which CMake was run.
-CMAKE_BINARY_DIR = /users/nvarsha/rdma_with_py/server_client_c
+CMAKE_BINARY_DIR = /users/nvarsha/rdma_with_py/rdma
 
 #=============================================================================
 # Targets provided globally by CMake.
@@ -87,9 +87,9 @@ rebuild_cache/fast: rebuild_cache
 
 # The main all target
 all: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /users/nvarsha/rdma_with_py/server_client_c/CMakeFiles /users/nvarsha/rdma_with_py/server_client_c//CMakeFiles/progress.marks
+	$(CMAKE_COMMAND) -E cmake_progress_start /users/nvarsha/rdma_with_py/rdma/CMakeFiles /users/nvarsha/rdma_with_py/rdma//CMakeFiles/progress.marks
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 all
-	$(CMAKE_COMMAND) -E cmake_progress_start /users/nvarsha/rdma_with_py/server_client_c/CMakeFiles 0
+	$(CMAKE_COMMAND) -E cmake_progress_start /users/nvarsha/rdma_with_py/rdma/CMakeFiles 0
 .PHONY : all
 
 # The main clean target
@@ -115,32 +115,6 @@ preinstall/fast:
 depend:
 	$(CMAKE_COMMAND) -S$(CMAKE_SOURCE_DIR) -B$(CMAKE_BINARY_DIR) --check-build-system CMakeFiles/Makefile.cmake 1
 .PHONY : depend
-
-#=============================================================================
-# Target rules for targets named server
-
-# Build rule for target.
-server: cmake_check_build_system
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 server
-.PHONY : server
-
-# fast build rule for target.
-server/fast:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/server.dir/build.make CMakeFiles/server.dir/build
-.PHONY : server/fast
-
-#=============================================================================
-# Target rules for targets named client
-
-# Build rule for target.
-client: cmake_check_build_system
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 client
-.PHONY : client
-
-# fast build rule for target.
-client/fast:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/client.dir/build.make CMakeFiles/client.dir/build
-.PHONY : client/fast
 
 #=============================================================================
 # Target rules for targets named rdma_server_lib
@@ -173,7 +147,6 @@ src/client.o: src/client.c.o
 
 # target to build an object file
 src/client.c.o:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/client.dir/build.make CMakeFiles/client.dir/src/client.c.o
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/rdma_client_lib.dir/build.make CMakeFiles/rdma_client_lib.dir/src/client.c.o
 .PHONY : src/client.c.o
 
@@ -182,7 +155,6 @@ src/client.i: src/client.c.i
 
 # target to preprocess a source file
 src/client.c.i:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/client.dir/build.make CMakeFiles/client.dir/src/client.c.i
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/rdma_client_lib.dir/build.make CMakeFiles/rdma_client_lib.dir/src/client.c.i
 .PHONY : src/client.c.i
 
@@ -191,7 +163,6 @@ src/client.s: src/client.c.s
 
 # target to generate assembly for a file
 src/client.c.s:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/client.dir/build.make CMakeFiles/client.dir/src/client.c.s
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/rdma_client_lib.dir/build.make CMakeFiles/rdma_client_lib.dir/src/client.c.s
 .PHONY : src/client.c.s
 
@@ -200,7 +171,6 @@ src/server.o: src/server.c.o
 
 # target to build an object file
 src/server.c.o:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/server.dir/build.make CMakeFiles/server.dir/src/server.c.o
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/rdma_server_lib.dir/build.make CMakeFiles/rdma_server_lib.dir/src/server.c.o
 .PHONY : src/server.c.o
 
@@ -209,7 +179,6 @@ src/server.i: src/server.c.i
 
 # target to preprocess a source file
 src/server.c.i:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/server.dir/build.make CMakeFiles/server.dir/src/server.c.i
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/rdma_server_lib.dir/build.make CMakeFiles/rdma_server_lib.dir/src/server.c.i
 .PHONY : src/server.c.i
 
@@ -218,7 +187,6 @@ src/server.s: src/server.c.s
 
 # target to generate assembly for a file
 src/server.c.s:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/server.dir/build.make CMakeFiles/server.dir/src/server.c.s
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/rdma_server_lib.dir/build.make CMakeFiles/rdma_server_lib.dir/src/server.c.s
 .PHONY : src/server.c.s
 
@@ -227,8 +195,6 @@ src/utils.o: src/utils.c.o
 
 # target to build an object file
 src/utils.c.o:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/server.dir/build.make CMakeFiles/server.dir/src/utils.c.o
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/client.dir/build.make CMakeFiles/client.dir/src/utils.c.o
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/rdma_server_lib.dir/build.make CMakeFiles/rdma_server_lib.dir/src/utils.c.o
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/rdma_client_lib.dir/build.make CMakeFiles/rdma_client_lib.dir/src/utils.c.o
 .PHONY : src/utils.c.o
@@ -238,8 +204,6 @@ src/utils.i: src/utils.c.i
 
 # target to preprocess a source file
 src/utils.c.i:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/server.dir/build.make CMakeFiles/server.dir/src/utils.c.i
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/client.dir/build.make CMakeFiles/client.dir/src/utils.c.i
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/rdma_server_lib.dir/build.make CMakeFiles/rdma_server_lib.dir/src/utils.c.i
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/rdma_client_lib.dir/build.make CMakeFiles/rdma_client_lib.dir/src/utils.c.i
 .PHONY : src/utils.c.i
@@ -249,8 +213,6 @@ src/utils.s: src/utils.c.s
 
 # target to generate assembly for a file
 src/utils.c.s:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/server.dir/build.make CMakeFiles/server.dir/src/utils.c.s
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/client.dir/build.make CMakeFiles/client.dir/src/utils.c.s
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/rdma_server_lib.dir/build.make CMakeFiles/rdma_server_lib.dir/src/utils.c.s
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/rdma_client_lib.dir/build.make CMakeFiles/rdma_client_lib.dir/src/utils.c.s
 .PHONY : src/utils.c.s
@@ -263,10 +225,8 @@ help:
 	@echo "... depend"
 	@echo "... edit_cache"
 	@echo "... rebuild_cache"
-	@echo "... client"
 	@echo "... rdma_client_lib"
 	@echo "... rdma_server_lib"
-	@echo "... server"
 	@echo "... src/client.o"
 	@echo "... src/client.i"
 	@echo "... src/client.s"
