@@ -57,10 +57,10 @@ RM = /usr/bin/cmake -E rm -f
 EQUALS = =
 
 # The top-level source directory on which CMake was run.
-CMAKE_SOURCE_DIR = /users/nvarsha/rdma_with_py/rdma
+CMAKE_SOURCE_DIR = /users/nvarsha/rdma_with_py
 
 # The top-level build directory on which CMake was run.
-CMAKE_BINARY_DIR = /users/nvarsha/rdma_with_py/rdma
+CMAKE_BINARY_DIR = /users/nvarsha/rdma_with_py
 
 #=============================================================================
 # Targets provided globally by CMake.
@@ -87,9 +87,9 @@ rebuild_cache/fast: rebuild_cache
 
 # The main all target
 all: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /users/nvarsha/rdma_with_py/rdma/CMakeFiles /users/nvarsha/rdma_with_py/rdma//CMakeFiles/progress.marks
+	$(CMAKE_COMMAND) -E cmake_progress_start /users/nvarsha/rdma_with_py/CMakeFiles /users/nvarsha/rdma_with_py//CMakeFiles/progress.marks
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 all
-	$(CMAKE_COMMAND) -E cmake_progress_start /users/nvarsha/rdma_with_py/rdma/CMakeFiles 0
+	$(CMAKE_COMMAND) -E cmake_progress_start /users/nvarsha/rdma_with_py/CMakeFiles 0
 .PHONY : all
 
 # The main clean target

@@ -146,11 +146,11 @@ int disconnect_client(struct client_resources* client_res, struct rdma_event_cha
     if (ret) {
         error("Failed to destroy completion queue cleanly, %d \n", -errno);
     }
-    /* Destroy completion channel */
-    ret = ibv_destroy_comp_channel(client_res->comp_channel);
-    if (ret) {
-        error("Failed to destroy completion channel cleanly, %d \n", -errno);
-    }
+//    /* Destroy completion channel */
+//    ret = ibv_destroy_comp_channel(client_res->comp_channel);
+//    if (ret) {
+//        error("Failed to destroy completion channel cleanly, %d \n", -errno);
+//    }
 
     rdma_buffer_deregister(region->memory_region_mr);
     rdma_buffer_deregister(client_buff->buffer);

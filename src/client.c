@@ -157,7 +157,7 @@ static void build_message_buffer(struct memory_region *region, const char* str_t
 /*
  * Send the registered memory region to the server as a FRAME message type
  */
-static void send_message_to_server(struct memory_region *region) {
+static int send_message_to_server(struct memory_region *region) {
     struct ibv_wc wc;
     client_buff.message = malloc(sizeof(struct msg));
     client_buff.message->type = FRAME;
@@ -185,8 +185,12 @@ static void send_message_to_server(struct memory_region *region) {
     client_send_wr.send_flags = IBV_SEND_SIGNALED;
 
     HANDLE_NZ(ibv_post_send(client_res->qp, &client_send_wr, &bad_client_send_wr));
-    process_work_completion_events(client_res->comp_channel, &wc, 1);
+    int ret = process_work_completion_events(client_res->comp_channel, &wc, 1);
+    if (ret < 0) {
+        return ret;
+    }
     info("POST MESSAGE TO SERVER \n");
+    return 0;
 }
 
 /* Send Connect Request to the server */
@@ -248,11 +252,21 @@ static int wait_for_event(struct sockaddr_in *s_addr, const char* str_to_send) {
                     rdma_disconnect(client_res->id);
                     return 0;
                 }
-                send_message_to_server(frame);
+                int count = 0;
+                while(count < 5) {
+                    int ret = send_message_to_server(frame);
+                    if (ret) {
+                        info("Send lost. Retry");
+                        count += 1;
+                        continue;
+                    }
+                    break;
+                }
                 rdma_disconnect(client_res->id);
                 break;
 
             case RDMA_CM_EVENT_DISCONNECTED:
+                info("%s event received \n", rdma_event_str(cm_event.event));
                 disconnect_client(client_res, cm_event_channel, frame, &server_buff, &client_buff);
                 return 0;
             default:

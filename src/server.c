@@ -4,9 +4,10 @@
 static struct ibv_recv_wr client_recv_wr, *bad_client_recv_wr = NULL;
 static struct ibv_send_wr server_send_wr, *bad_server_send_wr = NULL;
 static struct ibv_sge client_recv_sge, server_send_sge;
+static const char* received_frame = NULL;
 
 /* function prototypes */
-void start_rdma_server(struct sockaddr_in *server_sockaddr);
+const char* start_rdma_server(struct sockaddr_in *server_sockaddr);
 
 
 /* Setup client resources like PD, CC, CQ and QP */
@@ -228,11 +229,17 @@ static int wait_for_event() {
                 post_send_hello();
                 receive_client_message();
                 read_message_buffer(frame);
-                while (strcmp(frame->memory_region, "") == 0) {
+                int count = 0;
+                while (strcmp(frame->memory_region, "") == 0 && count < 5) {
                     read_message_buffer(frame);
                     sleep(1);
+                    count += 1;
+                }
+                if (count >= 5) {
+                    return -1;
                 }
                 show_memory_map(frame->memory_region);
+                received_frame = frame->memory_region;
                 break;
 
             /* Disconnect and Cleanup */
@@ -248,7 +255,7 @@ static int wait_for_event() {
     return ret;
 }
 
-void start_rdma_server(struct sockaddr_in *server_sockaddr) {
+const char* start_rdma_server(struct sockaddr_in *server_sockaddr) {
     // Create RDMA Event Channel
     HANDLE(cm_event_channel = rdma_create_event_channel());
 
@@ -269,7 +276,8 @@ void start_rdma_server(struct sockaddr_in *server_sockaddr) {
          ntohs(server_sockaddr->sin_port));
 
     wait_for_event();
-    return;
+    info("%s - received frame \n", received_frame);
+    return received_frame;
 }
 //
 //int main(int argc, char **argv) {

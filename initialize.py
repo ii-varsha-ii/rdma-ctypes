@@ -6,8 +6,8 @@ UNIX_PATH_MAX = 108
 PF_UNIX = socket.AF_UNIX
 PF_INET = socket.AF_INET
 
-server_libc = ctypes.CDLL('rdma/libs/librdma_server_lib.so')
-client_libc = ctypes.CDLL('rdma/libs/librdma_client_lib.so')
+server_libc = ctypes.CDLL('libs/librdma_server_lib.so')
+client_libc = ctypes.CDLL('libs/librdma_client_lib.so')
 
 
 def SUN_LEN(path):
@@ -28,6 +28,7 @@ class sockaddr_in(ctypes.Structure):
 
 
 server_libc.start_rdma_server.argtypes = [ctypes.POINTER(sockaddr_in)]
+server_libc.start_rdma_server.restype = ctypes.c_char_p
 client_libc.connect_server.argtypes = [ctypes.POINTER(sockaddr_in), ctypes.c_char_p]
 
 
@@ -48,7 +49,8 @@ def to_sockaddr(family, address, port):
 
 
 def server_listen(sockaddr):
-    server_libc.start_rdma_server(sockaddr)
+    received_frame = server_libc.start_rdma_server(sockaddr)
+    print("Received frame: ", received_frame.decode())
 
 
 def start_client(sockaddr, str_to_send):
