@@ -1,6 +1,8 @@
 # Prerequisites
 *.d
-
+.idea/
+rdma/cmake-build-debug/CMakeFiles/
+rdma/CMakeFiles/
 # Object files
 *.o
 *.ko
@@ -50,3 +52,9 @@ modules.order
 Module.symvers
 Mkfile.old
 dkms.conf
+
+../.idea/
+.cmake/
+rdma/cmake-build-debug/
+rdma/cmake_install.cmake
+rdma/CMakeCache.txt
