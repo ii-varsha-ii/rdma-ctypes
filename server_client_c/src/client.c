@@ -234,11 +234,14 @@ static int wait_for_event(struct sockaddr_in *s_addr, const char* str_to_send) {
                 send_hello_to_server(123);
                 poll_for_completion_events(client_res->cq, &wc, 2);
                 send_message_to_server(_region);
+                rdma_disconnect(cm_client_id);
                 break;
+
             case RDMA_CM_EVENT_DISCONNECTED:
                 HANDLE_NZ(rdma_ack_cm_event(received_event));
-                disconnect_and_cleanup(client_res, _region);
-                break;
+                info("%s event received \n", rdma_event_str(cm_event.event));
+                client_disconnect_and_cleanup(client_res);
+                return 0;
             default:
                 error("Event not found %s", (char *) cm_event.event);
                 break;
@@ -252,20 +255,20 @@ int connect_server(struct sockaddr_in *s_addr, const char* str_to_send) {
 }
 
 
-//int main(int argc, char **argv) {
-//    struct sockaddr_in server_sockaddr;
-//    int ret;
-//
-//    bzero(&server_sockaddr, sizeof server_sockaddr);
-//    server_sockaddr.sin_family = AF_INET;
-//    server_sockaddr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-//
-//    ret = get_addr("10.10.1.2", (struct sockaddr *) &server_sockaddr);
-//    if (ret) {
-//        error("Invalid dst addr");
-//        return ret;
-//    }
-//    server_sockaddr.sin_port = htons(DEFAULT_RDMA_PORT);
-//    connect_server(&server_sockaddr, "hellomydear");
-//    return ret;
-//}
+int main(int argc, char **argv) {
+    struct sockaddr_in server_sockaddr;
+    int ret;
+
+    bzero(&server_sockaddr, sizeof server_sockaddr);
+    server_sockaddr.sin_family = AF_INET;
+    server_sockaddr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+
+    ret = get_addr("10.10.1.2", (struct sockaddr *) &server_sockaddr);
+    if (ret) {
+        error("Invalid dst addr");
+        return ret;
+    }
+    server_sockaddr.sin_port = htons(1234);
+    connect_server(&server_sockaddr, "hellomydear");
+    return ret;
+}

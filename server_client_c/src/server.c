@@ -210,7 +210,7 @@ static int wait_for_event() {
             /* Initially Server receives and Client Connect Request */
             case RDMA_CM_EVENT_CONNECT_REQUEST:
                 _region = (struct memory_region *) malloc(sizeof(struct memory_region *));
-                rdma_ack_cm_event(received_event); //Ack the event
+                HANDLE_NZ(rdma_ack_cm_event(received_event));
                 setup_client_resources(cm_event.id); // send a recv req for client_metadata
                 build_message_buffer(_region);
                 post_recv_hello();
@@ -219,7 +219,7 @@ static int wait_for_event() {
 
             /*  After the client establishes the connection */
             case RDMA_CM_EVENT_ESTABLISHED:
-                rdma_ack_cm_event(received_event);
+                HANDLE_NZ(rdma_ack_cm_event(received_event));
                 poll_for_completion_events(client_res->cq, &wc, 1);
                 post_send_hello();
                 poll_for_completion_events(client_res->cq, &wc, 1);
@@ -235,9 +235,12 @@ static int wait_for_event() {
 
             /* Disconnect and Cleanup */
             case RDMA_CM_EVENT_DISCONNECTED:
-                rdma_ack_cm_event(received_event);
-                disconnect_and_cleanup(client_res, _region);
-                break;
+                HANDLE_NZ(rdma_ack_cm_event(received_event));
+                //poll_for_completion_events(client_res->cq, &wc, 1);
+                rdma_disconnect(client_res->client_id);
+                info("%s event received \n", rdma_event_str(cm_event.event));
+                server_disconnect_and_cleanup(client_res);
+                return 0;
             default:
                 error("Event not found %s", (char *) cm_event.event);
                 return -1;
@@ -253,6 +256,9 @@ void start_rdma_server(struct sockaddr_in *server_sockaddr) {
     // Using the RDMA EC, create ID to track communication information
     HANDLE_NZ(rdma_create_id(cm_event_channel, &cm_server_id, NULL, RDMA_PS_TCP));
 
+    info("Received at: %s , port: %d \n",
+         inet_ntoa(server_sockaddr->sin_addr),
+         ntohs(server_sockaddr->sin_port));
     // Using the ID, bind the socket information
     HANDLE_NZ(rdma_bind_addr(cm_server_id, (struct sockaddr *) server_sockaddr));
 
@@ -266,12 +272,17 @@ void start_rdma_server(struct sockaddr_in *server_sockaddr) {
     return;
 }
 
-//int main(int argc, char **argv) {
-//    struct sockaddr_in server_sockaddr;
-//
-//    bzero(&server_sockaddr, sizeof(server_sockaddr));
-//    server_sockaddr.sin_family = AF_INET;
-//    server_sockaddr.sin_addr.s_addr = htonl(INADDR_ANY);
-//    server_sockaddr.sin_port = htons(DEFAULT_RDMA_PORT);
-//    start_rdma_server(&server_sockaddr);
-//}
+int main(int argc, char **argv) {
+    struct sockaddr_in server_sockaddr;
+
+    bzero(&server_sockaddr, sizeof(server_sockaddr));
+    server_sockaddr.sin_family = AF_INET;
+    server_sockaddr.sin_addr.s_addr = htonl(INADDR_ANY);
+    int ret = get_addr("10.10.1.2", (struct sockaddr*) &server_sockaddr);
+    if (ret) {
+        error("Invalid IP");
+        return ret;
+    }
+    server_sockaddr.sin_port = htons(1234);
+    start_rdma_server(&server_sockaddr);
+}

@@ -63,8 +63,8 @@ int get_addr(char *dst, struct sockaddr *addr);
 
 void show_memory_map(const char* memory_region);
 void show_exchange_buffer(struct msg *attr);
-int disconnect_and_cleanup(struct per_client_resources* client_res, struct memory_region* region);
-
+int server_disconnect_and_cleanup(struct per_client_resources* client_res);
+int client_disconnect_and_cleanup(struct per_client_resources* client_res);
 struct ibv_mr *rdma_buffer_register(struct ibv_pd *pd,
                                     void *addr,
                                     uint32_t length,

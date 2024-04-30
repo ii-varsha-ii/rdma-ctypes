@@ -1,4 +1,0 @@
-/users/nvarsha/rdma_with_py/server_client_c/CMakeFiles/rdma_server_lib.dir
-/users/nvarsha/rdma_with_py/server_client_c/CMakeFiles/rdma_client_lib.dir
-/users/nvarsha/rdma_with_py/server_client_c/CMakeFiles/edit_cache.dir
-/users/nvarsha/rdma_with_py/server_client_c/CMakeFiles/rebuild_cache.dir

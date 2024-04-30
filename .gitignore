@@ -2,7 +2,7 @@
 *.d
 .idea/
 server_client_c/cmake-build-debug/CMakeFiles/
-
+server_client_c/CMakeFiles/
 # Object files
 *.o
 *.ko

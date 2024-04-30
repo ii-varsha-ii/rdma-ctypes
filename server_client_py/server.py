@@ -59,6 +59,7 @@ def to_sockaddr(family, address=None):
 #                const struct sockaddr *dest_addr, socklen_t addrlen);
 
 def sendto(sockfd, data, flags, family, address):
+
     buf = ctypes.create_string_buffer(data)
     dest_addr, addrlen = to_sockaddr(family, address)
     ret = libc.sendto(sockfd, buf, len(data), flags,
@@ -93,10 +94,11 @@ def echo_server(sock, af, bindaddr):
     try:
         while True:
             data, addr = recvfrom(sock.fileno(), 4096, 0, af)
-            print(data)
-            mangled = ''.join(reversed([i for i in str(data)]))
+            str_data = data.decode()
+            mangled = ''.join(reversed([i for i in str_data]))
             print('Got %r from %r, sending response %r' % (data, addr, mangled))
-            sendto(sock.fileno(), mangled, 0, af, addr)
+            print(mangled)
+            sendto(sock.fileno(), mangled.encode(), 0, af, addr)
     finally:
         if af == socket.AF_UNIX:
             os.unlink(bindaddr)
@@ -124,20 +126,22 @@ def send_server(sock, af, bindaddr, addr):
 
 if __name__ == '__main__':
     if len(sys.argv) in (3, 4) and sys.argv[1] == '-U':
+        print(sys.argv)
         sock = socket.socket(PF_UNIX, socket.SOCK_DGRAM)
         af = socket.AF_UNIX
         bindaddr = sys.argv[2]
         addr = (len(sys.argv) == 4) and sys.argv[3] or None
 
     elif len(sys.argv) in (3, 4) and sys.argv[1] == '-I':
+        print(sys.argv)
         sock = socket.socket(PF_INET, socket.SOCK_DGRAM)
         af = socket.AF_INET
         if len(sys.argv) == 3:
-            bindaddr = ('0.0.0.0', int(sys.argv[2]))
+            bindaddr = ('0.0.0.0', int(sys.argv[2])) # server
             addr = None
         else:
             bindaddr = ('0.0.0.0', 0)
-            addr = (sys.argv[2], int(sys.argv[3]))
+            addr = (sys.argv[2], int(sys.argv[3])) # client
 
     else:
         print('Usage:')
@@ -151,14 +155,6 @@ if __name__ == '__main__':
         sys.exit(1)
 
     if addr:
-        send_server(sock, af, bindaddr, addr)
+        send_server(sock, af, bindaddr, addr.encode()) # client
     else:
-        echo_server(sock, af, bindaddr)
-
-#
-# class RDMAServer:
-#     def __init__(self):
-#         pass
-#
-#     def listen(self):
-#         pass
+        echo_server(sock, af, bindaddr) # server
